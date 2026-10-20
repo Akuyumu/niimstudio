@@ -37,6 +37,12 @@ assert (Adw.get_major_version(), Adw.get_minor_version()) >= (1, 5)
 PY
 }
 
+sandbox_ready() {
+  command -v bwrap >/dev/null || return 1
+  # Probe an empty, read-only user namespace. Never weaken host security policy.
+  bwrap --unshare-user --ro-bind / / --dev /dev --proc /proc -- /usr/bin/true 2>/dev/null
+}
+
 dependency_command() {
   local kind="${1:-native}"
   local ID="" ID_LIKE=""
@@ -97,7 +103,7 @@ main() {
   if [[ "$format" == auto ]]; then
     if command -v flatpak >/dev/null && flatpak --user info io.github.niimstudio.App >/dev/null 2>&1; then
       format=flatpak
-    elif [[ -e "$HOME/.local/bin/niimstudio" || -L "$HOME/.local/bin/niimstudio" ]] || runtime_ready; then
+    elif [[ -e "$HOME/.local/bin/niimstudio" || -L "$HOME/.local/bin/niimstudio" ]] || { runtime_ready && sandbox_ready; }; then
       format=native
     else
       format=flatpak
@@ -134,6 +140,8 @@ main() {
     elif [[ "$remote_url" != https://dl.flathub.org/repo/ && "$remote_url" != https://dl.flathub.org/repo ]]; then
       die "The existing niimstudio-runtime remote has an unexpected URL; refusing to alter it"
     fi
+  elif runtime_ready && ! sandbox_ready; then
+    die "This host blocks the native WebKit sandbox. Use --flatpak; no kernel/security settings were changed"
   elif ! runtime_ready; then
     echo "Needs Python 3.11+, PyGObject, GTK 4.12+, Libadwaita 1.5+, and WebKitGTK 6."
     dependency_command || die "Install the equivalent native packages for your distribution; see docs/INSTALLING.md"
@@ -147,6 +155,7 @@ main() {
     sudo "${deps[@]}"
     python="$(find_python || true)"
     runtime_ready || die "Your native runtime is still too old/incomplete. A newer distribution may be needed"
+    sandbox_ready || die "This host blocks the native WebKit sandbox. Use --flatpak instead of disabling security protections"
   fi
   [[ "$format" != native ]] || echo "Native runtime: ready"
   [[ $check_only -eq 0 ]] || return 0

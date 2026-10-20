@@ -18,7 +18,7 @@ installation uses sudo. There are no new `.deb`/`.rpm` repositories to configure
 | --- | --- |
 | Existing NiimStudio user Flatpak | Update the Flatpak |
 | Existing native/source launcher | Keep the native route; source replacement needs opt-in |
-| Python 3.11+, PyGObject, GTK 4.12+, Libadwaita 1.5+, WebKitGTK 6 available | Small prebuilt native bundle |
+| Python 3.11+, PyGObject, GTK 4.12+, Libadwaita 1.5+, WebKitGTK 6 and usable sandbox namespaces | Small prebuilt native bundle |
 | Native runtime missing/too old | Offer Flatpak, with a maintained GNOME runtime |
 
 Flatpak bundles cover **x86-64 and ARM64**. A Flatpak-capable desktop is required;
@@ -34,6 +34,12 @@ apt, pacman, dnf, zypper, apk, or xbps where recognized. Other distributions get
 [Flatpak setup instructions](https://flatpak.org/setup/), then can rerun the same
 script. Flatpak must be supported/configured by the host; the installer does not
 edit NixOS configuration or enable kernel features/system services itself.
+
+If host policy blocks native WebKit's sandbox namespaces, automatic mode prefers
+Flatpak instead of changing that policy. A host that also blocks Flatpak needs
+its administrator/distribution's supported setup; the installer never disables
+WebKit sandboxing or changes sysctls. Release CI permits namespaces only inside
+its disposable test VMs so it can exercise the real sandboxed app.
 
 ## Inspect first or choose a format/version
 

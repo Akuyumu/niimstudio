@@ -21,6 +21,8 @@ jobs:
       - run: |
           sudo apt-get update
           sudo apt-get install -y python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-webkit-6.0 xvfb dbus-x11
+      - name: Allow sandbox namespaces in the disposable test VM only
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: npm ci --ignore-scripts
       - run: npm run check
       - run: npm audit --audit-level=moderate
@@ -52,6 +54,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder xvfb dbus-x11
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+      - name: Allow sandbox namespaces in the disposable test VM only
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Build and install Flatpak with its runtime
         run: flatpak-builder --user --install-deps-from=flathub --force-clean --repo=.flatpak-repo --install .flatpak-build packaging/flatpak/io.github.niimstudio.App.json
       - name: Test actual GTK/WebKit inside the sandbox
