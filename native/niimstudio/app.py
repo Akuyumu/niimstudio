@@ -332,8 +332,6 @@ class StudioApplication(Adw.Application):
                 # Font enumeration is large and only populates the font picker;
                 # keep it off the path to the first usable editor frame.
                 GLib.idle_add(self.send_font_families)
-                if self.smoke and not os.environ.get("NIIMSTUDIO_LIFECYCLE_BENCHMARK"):
-                    self.smoke_test()
             elif operation == "workspaceReady":
                 mark("workspace_ready")
                 if os.environ.get("NIIMSTUDIO_LIFECYCLE_TRACE"):
@@ -348,6 +346,10 @@ class StudioApplication(Adw.Application):
                         return GLib.SOURCE_REMOVE
 
                     GLib.timeout_add(100, close_benchmark)
+                elif self.smoke:
+                    # The editor hook exists only after mount; schedule from the
+                    # readiness handshake rather than guessing from `ready`.
+                    self.smoke_test()
             elif operation == "connect":
                 self.choose_printer(request_id, automatic=request.get("automatic") is True)
             elif operation == "knownDevice":
