@@ -117,6 +117,25 @@ not adjust technical settings. Preview one label before starting a batch.
 See [printer setup and USB permissions](docs/HARDWARE.md)
 if connecting fails. Canceling the chooser simply closes it; it is not an error.
 
+### Uninstall
+
+Close NiimStudio, then use the command for your installation:
+
+**Native installer:**
+
+```bash
+~/.local/bin/niimstudio --uninstall
+```
+
+**Flatpak:**
+
+```bash
+flatpak uninstall --user io.github.niimstudio.App
+```
+
+Both keep saved labels, drafts, and settings. Source checkouts and system
+dependencies are not deleted.
+
 ## A few things to know
 
 **This app is vibe-coded: it was built with AI assistance and iterated through
