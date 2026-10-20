@@ -36,6 +36,9 @@
   idempotence, conflicts, source migration, concurrent runs, data preservation,
   and a mock-network Flatpak bootstrap. Real bundle install/uninstall runs in an
   isolated HOME with spaces. Release CI also exercises installed GUI builds.
+- Ubuntu CI passes the actual installed native app and real Flatpak GUI on
+  x86-64 and ARM64. Exported Flatpak bundles are installed/reinstalled with a
+  retained-data fixture before publishing, not merely built as manifests.
 - 21 Node tests: CSV safety, print validation, undo, reconnect, every printable
   Code 128 character, EAN-13, cancellation, media validation, head-width/rotation
   mapping, resolution priority, and safe preset conversion.

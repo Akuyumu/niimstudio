@@ -60,14 +60,22 @@ jobs:
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Build and install Flatpak with its runtime
         run: flatpak-builder --user --install-deps-from=flathub --force-clean --repo=.flatpak-repo --install .flatpak-build packaging/flatpak/io.github.niimstudio.App.json
-      - name: Test actual GTK/WebKit inside the sandbox
-        run: |
-          flatpak run io.github.niimstudio.App --version
-          xvfb-run -a dbus-run-session -- flatpak run io.github.niimstudio.App --smoke-test
       - name: Export installable bundle
         env:
           ARCH: ${{ matrix.arch }}
         run: flatpak build-bundle --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo .flatpak-repo ".release/niimstudio-linux-$ARCH.flatpak" io.github.niimstudio.App
+      - name: Install exported bundle twice and test its real GUI and data retention
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          flatpak uninstall --user -y io.github.niimstudio.App
+          mkdir -p "$HOME/.var/app/io.github.niimstudio.App/data/niimstudio"
+          echo synthetic-retained-data > "$HOME/.var/app/io.github.niimstudio.App/data/niimstudio/installer-fixture.txt"
+          flatpak install --user -y --reinstall ".release/niimstudio-linux-$ARCH.flatpak"
+          flatpak install --user -y --reinstall ".release/niimstudio-linux-$ARCH.flatpak"
+          grep -qx synthetic-retained-data "$HOME/.var/app/io.github.niimstudio.App/data/niimstudio/installer-fixture.txt"
+          flatpak run io.github.niimstudio.App --version
+          xvfb-run -a dbus-run-session -- flatpak run io.github.niimstudio.App --smoke-test
       - uses: actions/upload-artifact@v4
         with:
           name: flatpak-${{ matrix.arch }}

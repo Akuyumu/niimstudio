@@ -179,7 +179,7 @@ main() {
     echo "Flatpak needs display, network (optional ZPL import), USB serial devices and BlueZ access."
     echo "Only Omarchy theme directories are exposed read-only; general home access is not granted."
     confirm "Install NiimStudio and its GNOME runtime for your user?"
-    flatpak install --user -y "$temp/$asset"
+    flatpak install --user -y --reinstall "$temp/$asset"
     echo "Installed. Open NiimStudio from your app menu, or: flatpak run io.github.niimstudio.App"
     echo "Update: rerun this installer with --flatpak"
     echo "Remove (keeps data): flatpak uninstall --user io.github.niimstudio.App"

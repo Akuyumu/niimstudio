@@ -28,7 +28,8 @@ for broader distro compatibility. Missing package/repository setup requires cons
 
 Automated transport/encoding/media/install tests, actual GTK/WebKit UI smoke tests,
 restart persistence and independent QR/barcode decoding pass. CI builds/tests on
-Ubuntu; actual desktop smoke tests ran on Omarchy. **Real printer output, physical
+Ubuntu, with actual exported Flatpak installs on x86-64 and ARM64; desktop tests
+also ran on Omarchy. **Real printer output, physical
 pairing and real roll auto-detection remain unverified**: no suitable device was
 available. This is not a claim of full proprietary NIIMBOT-app parity or universal
 model/distro support. See docs/STATUS.md and docs/HARDWARE.md before a first print.
