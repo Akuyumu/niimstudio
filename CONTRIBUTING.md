@@ -10,6 +10,8 @@ repository unless you are deliberately contributing an upstream change.
   device history, BlueZ pairing/BLE, and USB serial transport.
 - `src/desktop/`: NiimStudio UI, template/code dialogs, bridge/client adapter,
   reconnect loop, styles, and isolated GUI test helpers.
+  `media.ts`/`StockSetup.svelte` implement validated auto-stock setup and the
+  fallback preset cards; keep technical size/DPI knobs out of the native UI.
 - `src/components/`, `src/fabric-object/`, `src/utils/`: label engine derived from
   NiimBlue. Keep changes focused so upstream updates remain reviewable.
 - `tests/`, `scripts/`, `packaging/`, `docs/`: checks, developer/user launchers,

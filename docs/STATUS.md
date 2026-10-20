@@ -7,6 +7,10 @@
   searchable pop-out template sidebar, and compact named-template save dialog.
 - Top-left sidebar trigger, explicit Save as template, rounded stock preview,
   live code-entry dialogs and visible Edit content for selected codes.
+- Rounded print preview without changing encoded pixels; automatic stock sizing
+  from valid media metadata, model/capability DPI and feed direction. Simple stock
+  presets replace native raw size/DPI controls when detection is unavailable.
+  Existing designs require confirmation, and unknown/mismatched stock cannot print.
 - Native USB serial discovery and I/O; BlueZ BLE discovery and GATT transport.
 - Optional application-scoped PIN/passkey/confirmation pairing.
 - Remembered-device reconnect at startup and after unexpected disconnects,
@@ -25,13 +29,17 @@
 - 28 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
   fragmentation, service discovery, notifications, and cleanup; mocked pairing
   agents/prompts; palette safety/GTK compositing, bridge validation, and device history.
-- 13 Node tests: CSV safety, print validation, undo, reconnect, every printable
-  Code 128 character, EAN-13 check digits, and typed cancellation behavior.
+- 21 Node tests: CSV safety, print validation, undo, reconnect, every printable
+  Code 128 character, EAN-13, cancellation, media validation, head-width/rotation
+  mapping, resolution priority, and safe preset conversion.
 - Actual GTK/WebKit smoke profile: editor objects, image import, serialization,
   undo/redo, preview/encoding, palette application, draft storage, native chooser,
   invalid-save protection, quota rollback, template drawer/search/save, and the
   formatting buttons, link entry/editing, invalid EAN rejection, code-insert
   cancellation, and native chooser cancellation without an error toast. No physical printing.
+- Synthetic B1 Pro metadata exercises the stock picker, automatic empty-canvas
+  setup, Auto badge, existing-design confirmation, resize undo/redo, mismatch and
+  unknown-stock print guards, and visual-only rounded print-preview corners.
 - Independent ZXing-C++ decoding of real Fabric-rendered QR URL, Code 128 URL,
   the corrected `$)` patterns, and EAN-13 output.
 - Actual separate-process restart restores the saved draft (including QR quiet
@@ -43,7 +51,8 @@
 ## Still needs real hardware / user acceptance
 
 No USB printer or matching known BLE printer was present during development.
-USB/BLE printing, BlueZ pairing prompts with real hardware, battery/RFID accuracy,
+USB/BLE printing, BlueZ pairing prompts with real hardware, battery/RFID accuracy
+and automatic sizing from real media reports,
 reconnect behavior under printer faults, and representative real-media results
 need the checklist in `HARDWARE.md`. Mock tests are not substitutes for these.
 Theme parsing and initial application are automated-tested; a live desktop

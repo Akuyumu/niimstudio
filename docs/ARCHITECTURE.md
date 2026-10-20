@@ -27,7 +27,18 @@ before adding an object. Selected codes expose Edit content and double-click
 editing. New QR objects include a serialized four-module quiet zone; legacy QR
 objects retain their original positioning. Rounded stock uses matching canvas
 and CSS geometry. A one-time migration rounds the old default draft, not saved
-templates; users can still select rectangular or circular stock in Label size.
+templates; rectangular and circular presets remain available in Label stock.
+
+`src/desktop/media.ts` validates reported media and projects presets at the known
+printer resolution. `StockSetup.svelte` replaces raw desktop size/DPI/direction
+controls: reported media configures an untouched canvas; existing artwork gets a
+confirmation. Non-reporting stock uses fixed-size cards, with head-width filtering.
+Reported pixel dimensions take precedence when consistent with millimeters; head
+width maps to canvas height for left feed and width for top feed. Head pixels are
+byte-aligned. No product-code size database or speculative shape inference is used.
+The session's confirmed stock is cleared on disconnect or lost media information;
+Preview blocks unknown profiles, unconfirmed stock, and mismatched dimensions.
+CSS rounding in Preview does not modify the underlying encoded image.
 
 1. The bundled editor requests a connection through a WebKit script handler.
 2. GTK displays the device chooser. Only a device explicitly selected there can

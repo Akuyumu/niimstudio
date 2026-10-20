@@ -516,7 +516,7 @@ class StudioApplication(Adw.Application):
         GLib.timeout_add_seconds(2, self.finish_smoke)
 
     def capture_test_view(self, request_id, name):
-        allowed = {"editor", "templates", "qr-dialog", "barcode-dialog", "print-preview"}
+        allowed = {"editor", "templates", "qr-dialog", "barcode-dialog", "print-preview", "stock-picker", "stock-detected"}
         directory = os.environ.get("NIIMSTUDIO_TEST_ARTIFACTS")
         if name not in allowed or not directory:
             self.reply(request_id, False)

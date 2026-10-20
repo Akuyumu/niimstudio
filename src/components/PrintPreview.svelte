@@ -2,7 +2,15 @@
   import { onMount, onDestroy } from "svelte";
   import { isNative, nativeRequest } from "$/desktop/bridge";
   import { derived } from "svelte/store";
-  import { connectionState, printerClient, printerMeta, printJobActive } from "$/stores";
+  import {
+    connectionState,
+    printerClient,
+    printerMeta,
+    printerInfo,
+    rfidInfo,
+    printJobActive,
+    confirmedStock,
+  } from "$/stores";
   import * as effects from "$/utils/post_process";
   import {
     type EncodedImage,
@@ -31,6 +39,7 @@
   import { FileUtils } from "$/utils/file_utils";
   import AppModal from "$/components/basic/AppModal.svelte";
   import { validatePrintJob } from "$/utils/print_validation";
+  import { detectedStock, printerProfile, stockMatches } from "$/desktop/media";
 
   interface Props {
     labelProps: LabelProps;
@@ -76,6 +85,11 @@
   let currentPrintTask: AbstractPrintTask | undefined;
   let savedProps = $state<PreviewProps>({});
   let modalRef: AppModal;
+  const automaticStock = $derived(
+    isNative && $connectionState === "connected"
+      ? detectedStock($rfidInfo.paperInfo, printerProfile($printerMeta, $printerInfo))
+      : undefined,
+  );
 
   $effect(() => {
     printJobActive.set(printState === "printing");
@@ -124,13 +138,36 @@
 
   const onPrint = async () => {
     if (printState === "printing") return;
+    const profile = printerProfile($printerMeta, $printerInfo);
+    if (isNative && !profile) {
+      error = "The printer model could not be identified. Reconnect before printing.";
+      return;
+    }
+    const stock = detectedStock($rfidInfo.paperInfo, profile) ?? $confirmedStock;
+    if (isNative && !stock) {
+      error = "Choose the stock loaded in your printer before printing. Close Preview and select Label stock.";
+      return;
+    }
+    if (isNative && stock && !stockMatches(labelProps, stock)) {
+      error =
+        "The design size differs from the loaded stock. Close Preview, choose Label stock, and use the detected size before printing.";
+      return;
+    }
     const validation = validatePrintJob({
-      width: labelProps.size.width, height: labelProps.size.height, direction: labelProps.printDirection,
-      copies: quantity, pages: pagesTotal, density,
+      width: labelProps.size.width,
+      height: labelProps.size.height,
+      direction: labelProps.printDirection,
+      copies: quantity,
+      pages: pagesTotal,
+      density,
       printheadPixels: $printerMeta?.printheadPixels,
-      densityMin: $printerMeta?.densityMin, densityMax: $printerMeta?.densityMax,
+      densityMin: $printerMeta?.densityMin,
+      densityMax: $printerMeta?.densityMax,
     });
-    if (validation) { error = validation; return; }
+    if (validation) {
+      error = validation;
+      return;
+    }
     printState = "printing";
     cancelRequested = false;
     error = "";
@@ -141,7 +178,7 @@
       totalPages: pagesTotal * quantity,
       density,
       speed,
-      labelType,
+      labelType: isNative ? (stock?.labelType ?? labelType) : labelType,
       statusPollIntervalMs: 100,
       statusTimeoutMs: 8_000,
       pageColor: PageColorType.SingleColor,
@@ -423,6 +460,7 @@
     }
 
     loadProps();
+    if (automaticStock?.labelType !== undefined) labelType = automaticStock.labelType;
 
     await generatePreviewData(currentPage);
 
@@ -432,7 +470,12 @@
   });
 </script>
 
-<AppModal title={$tr("preview.title")} onClose={onModalClose} dismissible={printState === "idle"} bind:show bind:this={modalRef}>
+<AppModal
+  title={$tr("preview.title")}
+  onClose={onModalClose}
+  dismissible={printState === "idle"}
+  bind:show
+  bind:this={modalRef}>
   <div class="d-flex justify-content-center">
     {#if pagesTotal > 1}
       <button disabled={printState !== "idle"} class="btn w-100 fs-1" onclick={pageDown}>
@@ -440,7 +483,9 @@
       </button>
     {/if}
 
-    <canvas class="print-start-{labelProps.printDirection}" bind:this={previewCanvas}></canvas>
+    <canvas
+      class="print-start-{labelProps.printDirection} label-shape-{labelProps.shape ?? 'rect'}"
+      bind:this={previewCanvas}></canvas>
 
     {#if pagesTotal > 1}
       <button disabled={printState !== "idle"} class="btn w-100 fs-1" onclick={pageUp}>
@@ -469,7 +514,9 @@
       <div class="alert alert-danger" role="alert">{error}</div>
     {/if}
     {#if cancelRequested && printState === "printing"}
-      <p class="text-warning mt-2">Stopping after the current page and its submitted copies. No more pages will be sent.</p>
+      <p class="text-warning mt-2">
+        Stopping after the current page and its submitted copies. No more pages will be sent.
+      </p>
     {/if}
   </div>
 
@@ -636,22 +683,27 @@
 
     <div class="input-group input-group-sm">
       <span class="input-group-text">{$tr("preview.label_type")}</span>
-      <select class="form-select" bind:value={labelType} onchange={() => updateSavedProp("labelType", labelType)}>
-        {#each Object.values(LabelType) as lt (lt)}
-          {#if typeof lt !== "string"}
-            <option value={lt}>
-              {#if $printerMeta?.paperTypes.includes(lt)}✔{/if}
-              {$tr(labelTypeTranslationKey(LabelType[lt]))}
-            </option>
-          {/if}
-        {/each}
-      </select>
+      {#if automaticStock?.labelType !== undefined}
+        <span class="input-group-text flex-grow-1"
+          >{$tr(labelTypeTranslationKey(LabelType[automaticStock.labelType]))} · Auto</span>
+      {:else}
+        <select class="form-select" bind:value={labelType} onchange={() => updateSavedProp("labelType", labelType)}>
+          {#each Object.values(LabelType) as lt (lt)}
+            {#if typeof lt !== "string"}
+              <option value={lt}>
+                {#if $printerMeta?.paperTypes.includes(lt)}✔{/if}
+                {$tr(labelTypeTranslationKey(LabelType[lt]))}
+              </option>
+            {/if}
+          {/each}
+        </select>
 
-      <ParamLockButton
-        propName="labelType"
-        value={labelType}
-        savedValue={savedProps.labelType}
-        onClick={toggleSavedProp} />
+        <ParamLockButton
+          propName="labelType"
+          value={labelType}
+          savedValue={savedProps.labelType}
+          onClick={toggleSavedProp} />
+      {/if}
     </div>
 
     <div class="input-group input-group-sm">
@@ -712,7 +764,11 @@
     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{$tr("preview.close")}</button>
 
     {#if printState !== "idle"}
-      <button type="button" class="btn btn-primary" disabled={$disconnected || cancelRequested} onclick={() => cancelRequested = true}>
+      <button
+        type="button"
+        class="btn btn-primary"
+        disabled={$disconnected || cancelRequested}
+        onclick={() => (cancelRequested = true)}>
         {$tr("preview.print.cancel")}
       </button>
     {/if}
@@ -725,7 +781,12 @@
       <MdIcon icon="print" />
     </button>
 
-    <button type="button" class="btn btn-primary" disabled={$disconnected || printState !== "idle"} onclick={onPrint}>
+    <button
+      type="button"
+      class="btn btn-primary"
+      data-action="print-label"
+      disabled={$disconnected || printState !== "idle"}
+      onclick={onPrint}>
       {#if $disconnected}
         {$tr("preview.not_connected")}
       {:else}
@@ -743,6 +804,12 @@
   }
   canvas.print-start-left {
     border-left: 2px solid #ff4646;
+  }
+  canvas.label-shape-rounded_rect {
+    border-radius: 10px;
+  }
+  canvas.label-shape-circle {
+    border-radius: 50%;
   }
   canvas.print-start-top {
     border-top: 2px solid #ff4646;

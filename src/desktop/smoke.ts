@@ -10,6 +10,7 @@ import { nativeRequest } from "$/desktop/bridge";
 import { runCodeSmoke } from "$/desktop/smoke_codes";
 import { get } from "svelte/store";
 import { connectionState } from "$/stores";
+import { runStockSmoke } from "$/desktop/smoke_stock";
 
 export async function runEditorSmoke(context: {
   canvas: CustomCanvas;
@@ -23,6 +24,8 @@ export async function runEditorSmoke(context: {
 }) {
   const { canvas, labelProps, undo } = context;
   const showcase = { ...context.exportLabel(), title: window.__NIIMSTUDIO_DEMO__ ? "Coffee beans" : "Example label" };
+  const stockResults = await runStockSmoke(context);
+  const stockSetupWorks = Object.values(stockResults).every(Boolean);
   await context.loadLabel({ ...showcase, label: { ...showcase.label, shape: "rect" } });
   await tick();
   const rectangleWorks = getComputedStyle(document.querySelector(".canvas-wrapper")!).borderRadius === "0px";
@@ -151,7 +154,8 @@ export async function runEditorSmoke(context: {
       formattingWorks &&
       codesWork &&
       deviceCancellationSilent &&
-      stockShapesCorrect,
+      stockShapesCorrect &&
+      stockSetupWorks,
     objects: before,
     afterUndo,
     afterRedo,
@@ -168,6 +172,7 @@ export async function runEditorSmoke(context: {
     ...codeResults,
     deviceCancellationSilent,
     stockShapesCorrect,
+    ...stockResults,
     artifacts,
   };
 }

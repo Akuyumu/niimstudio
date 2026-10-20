@@ -10,11 +10,14 @@
 4. Select the printer. BLE often works with **Connect** without pairing. Use
    **Pair** if a bond is required; answer the native PIN/passkey prompt using
    the printer's documented code. No default PIN is assumed.
-5. Set the actual loaded label dimensions. The B1 Pro is 300 DPI: choose a
-   300-DPI preset or set 11.81 dots/mm. Upstream metadata gives it 567 printhead
-   pixels; the editor rounds head dimensions down to multiples of eight.
-   A 40×30 mm, 300-DPI label is a sensible starting point **only if that is the
-   media you actually loaded**. Do not use a 50-mm printable width blindly.
+5. The app reads the printer's model/capabilities and paper information. For a
+   recognized B1 Pro it selects 300 DPI and top feed. Valid reported dimensions
+   automatically size an empty/new canvas; existing artwork gets a confirmation
+   first. If usable dimensions are not reported, choose the size on the roll
+   packaging in **Label stock**. There are no raw size/DPI/direction controls in
+   the desktop UI. The B1 Pro profile has 567 printhead pixels; widths are rounded
+   down to multiples of eight, and oversized presets are unavailable. Choose
+   40×30 mm **only if that is the stock actually loaded**; 50 mm exceeds its head.
 6. Open **Preview** and verify orientation, margins, density, and dithering.
    NiimBlueLib negotiates a print task. If the B1 Pro needs an override, the
    user-reported working task is `D110M_V4`; select
@@ -31,6 +34,27 @@ After the first successful link, the app remembers the printer and tries to
 reconnect at startup or after an unexpected cable/radio disconnect. It never
 replays an interrupted print. A deliberate disconnect pauses retries for that
 session. Disable **Reconnect automatically** in Devices to persistently opt out.
+
+## Automatic stock setup
+
+Paper dimensions come from NiimBlueLib's validated paper-info response, not from
+guessing a roll size by printer model or RFID product code. Reported label height
+excludes its gap. Pixel/mm consistency, printhead width, finite positive sizes,
+and protocol byte alignment are checked before use. DPI comes from capabilities
+when available, otherwise the known model profile; feed direction comes from that
+profile. Recognized media type also sets gaps/black-mark handling in Preview.
+
+Older firmware, third-party/non-RFID stock, continuous rolls without a finite
+label length, and special tail stock may not provide usable dimensions. These
+use the fixed-size stock picker; technical adjustment fields stay hidden. Offline
+presets use a 203-DPI preview and are checked against the connected profile before
+printing. The app does not measure cut shape/radius; it preserves explicit stock
+shapes and shows ordinary rounded stock with approximate corners in both views.
+
+Changing canvas size does not silently scale or rearrange artwork. A confirmation
+protects existing designs; Undo restores the previous canvas size. Printing is
+blocked until the design matches detected or explicitly chosen stock. This logic
+has synthetic-metadata tests, but real B1 Pro stock reporting still needs testing.
 
 ## USB permission errors
 
@@ -69,6 +93,7 @@ NiimBlueLib version, without publishing full Bluetooth addresses by default.
 - [ ] BLE discovery / connect / single physical label
 - [ ] Optional pairing / PIN / passkey / confirmation / cancellation
 - [ ] 300-DPI dimensions, print direction, offsets, density, gaps/black marks
+- [ ] Reported stock auto-setup, non-reporting-roll picker, safe roll-change prompt
 - [ ] Text, Unicode/fonts, QR/barcode scanning, image threshold and dithering
 - [ ] Multiple copies, CSV batches, cancellation at page boundary
 - [ ] Cable removal or Bluetooth loss during a job, then reconnect

@@ -20,6 +20,9 @@ desktop, not Omarchy's shell or window manager.
   or **Ctrl+S** saves a named copy; your current draft is saved automatically.
 - Link a USB or Bluetooth LE printer through **Devices**, including pairing-code
   prompts when needed. Remember the last printer and reconnect without reprinting.
+- Automatically use reported stock dimensions, printer DPI, and feed direction—no
+  raw size or resolution knobs. Rolls without usable size data get a simple stock
+  picker. Existing artwork is never resized without confirmation.
 - Preview thermal dithering, margins, density, copies, and CSV batches before printing.
   Export editable JSON or a PNG for backups and reuse.
 
@@ -86,9 +89,12 @@ that copy. No root access is needed for the build or launcher installation.
 
 ### 3. Connect your printer
 
-Click **Devices**, choose USB or scan for Bluetooth LE, then set the actual stock
-size and DPI in **Label size**. For a B1 Pro, use **300 DPI**. Preview one label
-before starting a batch. See [printer setup and USB permissions](docs/HARDWARE.md)
+Click **Devices**, then choose USB or scan for Bluetooth LE. Recognized printers
+provide the resolution and feed direction; supported rolls also provide their
+size. The B1 Pro profile selects **300 DPI** automatically. If the roll does not
+report usable dimensions, **Label stock** asks you to choose its packaging size,
+not adjust technical settings. Preview one label before starting a batch.
+See [printer setup and USB permissions](docs/HARDWARE.md)
 if connecting fails. Canceling the chooser simply closes it; it is not an error.
 
 ## A few things to know
@@ -104,6 +110,11 @@ pairing prompts, and printer-fault recovery still need the
 [hardware acceptance checklist](docs/HARDWARE.md). Full proprietary NIIMBOT-app
 parity, its paid/cloud template catalog, classic Bluetooth SPP, and CUPS integration
 are **not** claimed. [Current status and test coverage](docs/STATUS.md).
+
+Automatic stock sizing depends on usable printer/roll metadata; it cannot identify
+every third-party roll. Corner rounding is an approximate preview, not a measured
+cut radius. Unknown printer profiles and unconfirmed/mismatched stock sizes are
+blocked from printing rather than guessed.
 
 Normal editing and printing are offline. The optional ZPL import renderer sends
 the ZPL you choose to [Labelary](https://labelary.com); nothing else adds telemetry

@@ -6,7 +6,7 @@
   import { Barcode } from "$/fabric-object/barcode";
   import { QRCode } from "$/fabric-object/qrcode";
   import { iconCodepoints, type MaterialIcon } from "$/styles/mdi_icons";
-  import { appConfig, automation, connectionState, csvData, loadedFonts } from "$/stores";
+  import { appConfig, automation, connectionState, csvData, loadedFonts, printJobActive } from "$/stores";
   import {
     type ExportedLabelTemplate,
     type FabricJson,
@@ -42,6 +42,7 @@
   import { ExportedLabelTemplateSchema } from "$/types";
   import SelectionToolbar from "$/desktop/SelectionToolbar.svelte";
   import CodeEditor, { type CodeContent } from "$/desktop/CodeEditor.svelte";
+  import StockSetup from "$/desktop/StockSetup.svelte";
 
   let { saveTemplate }: { saveTemplate?: () => void } = $props();
 
@@ -61,7 +62,8 @@
   let undoState = $state<UndoState>({ undoDisabled: false, redoDisabled: false });
   let zoomText = $state<string>("100%");
   let draftTimer: ReturnType<typeof setTimeout> | undefined;
-  let draftReady = false;
+  let draftReady = $state(false);
+  let starterCanvas: string | undefined;
   let draftState = $state("Draft saved locally");
   let codeEditor = $state<{ kind: "qrcode" | "barcode"; existing?: QRCode | Barcode }>();
 
@@ -395,21 +397,22 @@
     const urlLoaded = await loadLabelFromUrl();
 
     if (urlLoaded) {
-      return;
+      return false;
     }
 
     try {
       const defaultTemplate = LocalStoragePersistence.loadDefaultTemplate();
 
       if (defaultTemplate !== null) {
-        onLoadRequested(defaultTemplate);
-        return;
+        await loadLabelData(defaultTemplate);
+        return false;
       }
     } catch (e) {
       Toasts.error(e);
     }
 
     LabelDesignerObjectHelper.addText(fabricCanvas!, $tr("editor.default_text"));
+    return true;
   };
 
   const renderOnFontsChanged = () => {
@@ -453,7 +456,7 @@
         console.error("Draft restore failed", error);
       }
     }
-    if (!restored) await loadDefaultLabel();
+    if (!restored && (await loadDefaultLabel())) starterCanvas = JSON.stringify(fabricCanvas.toObject());
     // Older NiimStudio drafts did not record a stock shape. Show the ordinary
     // die-cut label shape by default, without changing explicit rectangular stock.
     if (isNative) {
@@ -663,7 +666,22 @@
   <div class="row mb-1 studio-actions">
     <div class="col d-flex justify-content-center">
       <div class="toolbar d-flex flex-wrap gap-1 justify-content-center align-items-center">
-        <LabelPropsEditor {labelProps} onChange={onUpdateLabelProps} label={isNative ? "Label size" : undefined} />
+        {#if isNative}
+          <StockSetup
+            current={labelProps}
+            blocked={!draftReady || previewOpened || $printJobActive || !!codeEditor}
+            hasArtwork={() =>
+              !!fabricCanvas?.getObjects().length && JSON.stringify(fabricCanvas.toObject()) !== starterCanvas}
+            onApply={(stock) =>
+              onUpdateLabelProps({
+                ...labelProps,
+                size: stock.size,
+                printDirection: stock.printDirection,
+                shape: stock.shape,
+              })} />
+        {:else}
+          <LabelPropsEditor {labelProps} onChange={onUpdateLabelProps} />
+        {/if}
 
         {#if !isNative}
           <button class="btn btn-sm btn-secondary" onclick={clearCanvas} title={$tr("editor.clear")}>
