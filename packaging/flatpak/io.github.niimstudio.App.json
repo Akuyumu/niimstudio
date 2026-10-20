@@ -21,7 +21,7 @@
       "buildsystem": "simple",
       "build-commands": [
         "mkdir -p /app/share/niimstudio",
-        "cp -a . /app/share/niimstudio/",
+        "cp -a dist native packaging scripts docs licenses LICENSE README.md release.json install.sh /app/share/niimstudio/",
         "install -Dm755 flatpak-launch /app/bin/niimstudio",
         "install -Dm644 io.github.niimstudio.App.desktop /app/share/applications/io.github.niimstudio.App.desktop",
         "install -Dm644 packaging/io.github.niimstudio.App.svg /app/share/icons/hicolor/scalable/apps/io.github.niimstudio.App.svg"

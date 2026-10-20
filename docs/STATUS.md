@@ -29,7 +29,7 @@
 
 ## Automated verification
 
-- 41 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
+- 42 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
   fragmentation, service discovery, notifications, and cleanup; mocked pairing
   agents/prompts; palette safety/GTK compositing, bridge validation, and device history.
 - Installer tests cover checksum failure, traversal/links, update rollback,

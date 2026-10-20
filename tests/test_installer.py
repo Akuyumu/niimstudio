@@ -229,6 +229,26 @@ if 'install' in args: Path(os.environ['FIXTURE_LOG']).write_text('installed')
         self.assertNotIn("--filesystem=home", manifest["finish-args"])
         self.assertNotIn("--filesystem=host", manifest["finish-args"])
 
+    def test_package_dispatch_covers_linux_families_without_executing_packages(self):
+        functions = (ROOT / "install.sh").read_text().rsplit('main "$@"', 1)[0]
+        expected = {
+            "arch": "pacman",
+            "ubuntu": "apt-get",
+            "debian": "apt-get",
+            "fedora": "dnf",
+            "rhel": "dnf",
+            "opensuse-tumbleweed": "zypper",
+            "alpine": "apk",
+            "void": "xbps-install",
+        }
+        for distro, manager in expected.items():
+            with self.subTest(distro=distro):
+                release = self.base / "os-release"
+                release.write_text(f"ID={distro}\n")
+                script = functions + '\ndeclare -a deps=(); dependency_command flatpak "$1"; printf "%s" "${deps[0]}"\n'
+                result = subprocess.check_output(["bash", "-s", "--", str(release)], input=script, text=True)
+                self.assertEqual(result, manager)
+
 
 if __name__ == "__main__":
     unittest.main()

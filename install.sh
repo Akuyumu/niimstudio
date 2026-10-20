@@ -45,8 +45,9 @@ sandbox_ready() {
 
 dependency_command() {
   local kind="${1:-native}"
+  local release_file="${2:-/etc/os-release}"
   local ID="" ID_LIKE=""
-  [[ ! -f /etc/os-release ]] || source /etc/os-release
+  [[ ! -f "$release_file" ]] || source "$release_file"
   case " $ID $ID_LIKE " in
     *" arch "*|*" omarchy "*) deps=(pacman -S --needed --noconfirm gtk4 libadwaita python python-gobject webkitgtk-6.0 bluez) ;;
     *" ubuntu "*|*" debian "*) deps=(apt-get install -y python3 python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-webkit-6.0 bluez) ;;

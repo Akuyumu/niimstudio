@@ -32,6 +32,8 @@ jobs:
         with:
           name: native
           path: .release/*
+          include-hidden-files: true
+          if-no-files-found: error
   flatpak:
     needs: native
     strategy:
@@ -70,6 +72,8 @@ jobs:
         with:
           name: flatpak-${{ matrix.arch }}
           path: .release/*.flatpak
+          include-hidden-files: true
+          if-no-files-found: error
   publish:
     if: startsWith(github.ref, 'refs/tags/')
     needs: [native, flatpak]
