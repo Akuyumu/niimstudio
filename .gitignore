@@ -13,3 +13,4 @@ __pycache__/
 /.flatpak-build/
 /.flatpak-repo/
 /.flatpak-builder/
+/.flatpak-update*

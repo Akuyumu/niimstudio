@@ -73,6 +73,25 @@ download() {
     --output "$2" "$1"
 }
 
+install_flatpak_bundle() {
+  local output status
+  if output="$(LC_ALL=C flatpak install --user -y --reinstall "$1" 2>&1)"; then
+    printf '%s\n' "$output"
+    return 0
+  else
+    status=$?
+    # Flatpak rejects an identical local-bundle commit even with --reinstall.
+    # Do not confuse a failed upgrade or another install error with this case.
+    if [[ "$output" == *"This version of io.github.niimstudio.App is already installed"* ]] && \
+       flatpak --user info io.github.niimstudio.App >/dev/null 2>&1; then
+      echo "NiimStudio is already up to date."
+      return 0
+    fi
+    printf '%s\n' "$output" >&2
+    return "$status"
+  fi
+}
+
 main() {
   local version=latest mode=ask replace_source=0 check_only=0 python="" temp="" expected actual base
   local format=auto assume_yes=0 asset=niimstudio-linux.tar.gz arch remote_url
@@ -179,7 +198,7 @@ main() {
     echo "Flatpak needs display, network (optional ZPL import), USB serial devices and BlueZ access."
     echo "Only Omarchy theme directories are exposed read-only; general home access is not granted."
     confirm "Install NiimStudio and its GNOME runtime for your user?"
-    flatpak install --user -y --reinstall "$temp/$asset"
+    install_flatpak_bundle "$temp/$asset"
     echo "Installed. Open NiimStudio from your app menu, or: flatpak run io.github.niimstudio.App"
     echo "Update: rerun this installer with --flatpak"
     echo "Remove (keeps data): flatpak uninstall --user io.github.niimstudio.App"

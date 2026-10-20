@@ -197,9 +197,17 @@ shutil.copyfile(Path(os.environ['FIXTURE_ASSETS'])/args[-1].rsplit('/',1)[-1],ar
 import os,sys
 from pathlib import Path
 args=sys.argv[1:]
-if 'info' in args: sys.exit(1)
+if 'info' in args: sys.exit(0 if Path(os.environ['FIXTURE_LOG']).exists() else 1)
 if 'remotes' in args: print('niimstudio-runtime\\thttps://dl.flathub.org/repo/')
-if 'install' in args: Path(os.environ['FIXTURE_LOG']).write_text('installed')
+if 'install' in args:
+    if os.environ.get('FIXTURE_OTHER_FAILURE'):
+        print('error: simulated failed upgrade',file=sys.stderr)
+        sys.exit(3)
+    log=Path(os.environ['FIXTURE_LOG'])
+    if log.exists():
+        print('error: This version of io.github.niimstudio.App is already installed',file=sys.stderr)
+        sys.exit(1)
+    log.write_text('installed')
 """,
         }
         for name, script in scripts.items():
@@ -215,6 +223,14 @@ if 'install' in args: Path(os.environ['FIXTURE_LOG']).write_text('installed')
         result = subprocess.run(command, env=environment, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(log.read_text(), "installed")
+        repeated = subprocess.run(command, env=environment, capture_output=True, text=True)
+        self.assertEqual(repeated.returncode, 0, repeated.stdout + repeated.stderr)
+        self.assertIn("already up to date", repeated.stdout)
+        failed = subprocess.run(
+            command, env={**environment, "FIXTURE_OTHER_FAILURE": "1"}, capture_output=True, text=True
+        )
+        self.assertEqual(failed.returncode, 3)
+        self.assertIn("simulated failed upgrade", failed.stderr)
         log.unlink()
         (assets / "SHA256SUMS").write_text("0" * 64 + "  niimstudio-linux-" + os.uname().machine + ".flatpak\n")
         result = subprocess.run(command, env=environment, capture_output=True, text=True)
