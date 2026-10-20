@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=NiimStudio
+Comment=Local NIIMBOT label designer and printer
+Exec=niimstudio
+Icon=io.github.niimstudio.App
+Terminal=false
+Categories=Graphics;
+Keywords=NIIMBOT;labels;printer;Bluetooth;
+StartupNotify=true

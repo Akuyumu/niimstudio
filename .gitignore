@@ -9,3 +9,7 @@ __pycache__/
 /.test-results/
 /AGENTS.md
 /agent.md
+/.release/
+/.flatpak-build/
+/.flatpak-repo/
+/.flatpak-builder/

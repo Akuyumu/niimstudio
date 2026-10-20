@@ -21,7 +21,17 @@ DEFAULT_PALETTE = {
 def theme_paths():
     state = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
     config = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-    return [state / "omarchy/current/theme/colors.toml", config / "omarchy/current/theme/colors.toml"]
+    paths = [state / "omarchy/current/theme/colors.toml", config / "omarchy/current/theme/colors.toml"]
+    if os.environ.get("FLATPAK_ID") == "io.github.niimstudio.App":
+        # Flatpak redirects XDG paths to app data. Only explicitly granted,
+        # read-only host Omarchy directories are considered as extra sources.
+        paths.extend(
+            [
+                Path.home() / ".local/state/omarchy/current/theme/colors.toml",
+                Path.home() / ".config/omarchy/current/theme/colors.toml",
+            ]
+        )
+    return paths
 
 
 def read_palette(paths=None, *, fallback=True):

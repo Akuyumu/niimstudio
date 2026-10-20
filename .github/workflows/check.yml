@@ -22,3 +22,6 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run check
       - run: npm audit --audit-level=moderate
+      - run: bash -n install.sh scripts/niimstudio packaging/flatpak/flatpak-launch
+      - run: python3 scripts/package-release.py
+      - run: python3 scripts/test-release-install.py .release

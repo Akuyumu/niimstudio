@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export PYTHONDONTWRITEBYTECODE=1
 root="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." && pwd)"
+case "${1:-}" in
+  --version|--update|--uninstall)
+    operation="${1#--}"; shift
+    for interpreter in /usr/bin/python3 /usr/bin/python; do
+      if [[ -x "$interpreter" ]]; then
+        exec "$interpreter" "$root/scripts/managed_install.py" "$operation" "$@"
+      fi
+    done
+    echo "System Python 3 is required." >&2
+    exit 1 ;;
+esac
 export PYTHONPATH="$root/native${PYTHONPATH:+:$PYTHONPATH}"
 python="$("$root/scripts/system-python")"
 if [[ ! -f "$root/dist/index.html" ]]; then

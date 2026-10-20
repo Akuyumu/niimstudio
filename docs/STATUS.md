@@ -23,12 +23,19 @@
   import/export, CSV variables, print preview, thermal dithering and print tasks.
 - Job/printhead checks; bounded USB/BLE operations and page-boundary batch stop.
 - User-local launcher/desktop integration and an optional signed local runtime.
+- v0.1.0 installer/release pipeline: native prebuilt bundle plus x86-64/ARM64
+  Flatpak with GNOME runtime; one script chooses a format and verifies checksums.
+  Explicit updates, source-launcher migration opt-in and data-preserving uninstall.
 
 ## Automated verification
 
-- 28 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
+- 41 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
   fragmentation, service discovery, notifications, and cleanup; mocked pairing
   agents/prompts; palette safety/GTK compositing, bridge validation, and device history.
+- Installer tests cover checksum failure, traversal/links, update rollback,
+  idempotence, conflicts, source migration, concurrent runs, data preservation,
+  and a mock-network Flatpak bootstrap. Real bundle install/uninstall runs in an
+  isolated HOME with spaces. Release CI also exercises installed GUI builds.
 - 21 Node tests: CSV safety, print validation, undo, reconnect, every printable
   Code 128 character, EAN-13, cancellation, media validation, head-width/rotation
   mapping, resolution priority, and safe preset conversion.
@@ -65,8 +72,9 @@ silently during development.
   commercial template/icon catalogs, paid content, and proprietary label formats
   are not reproduced.
 - Classic Bluetooth SPP, CUPS driver/system-wide print queue, phone integration,
-  Quickshell widget, multi-printer queue, signed downloadable releases, Flatpak,
-  or an Arch PKGBUILD.
+  Quickshell widget, multi-printer queue, independently signed app releases,
+  AppImage, `.deb`/`.rpm`, or an Arch PKGBUILD. Flatpak is a GitHub-hosted bundle,
+  not a Flathub app listing; its runtime comes from Flathub with permission.
 - Automatic firmware updates, resets, Bluetooth bond removal, or USB permission
   changes. The inherited advanced firmware controls are not hardware-validated.
 - Every upstream web-only feature in the native shell: remote template URLs,
@@ -81,5 +89,5 @@ silently during development.
 3. Validate label stock profiles, saved-library/restart workflows, and batch UX.
 4. Add native backup/restore, test imported PDFs, improve accessible tool labels,
    and refine the template drawer from actual usage feedback.
-5. The public repository is an early source release, not a claim of complete
-   hardware verification. Next add packaged releases and a tested support matrix.
+5. The packaged release is early software, not complete hardware verification.
+   Grow the tested support matrix and consider a signed Flatpak update repository.

@@ -117,6 +117,22 @@ the `/usr/bin/python` alias exists. Source installs target modern Linux desktops
 
 ## Project map
 
+`install.sh` selects a native release when a compatible system runtime exists,
+otherwise Flatpak. It verifies SHA-256 before invoking the release installer or
+Flatpak. `managed_install.py` installs immutable versioned app directories and
+atomically switches a `current` link, with conflict checks, an install lock and
+integration rollback. App data lives elsewhere and is never purged on uninstall.
+`package-release.py` includes prebuilt dist/Python, explicit project files and
+dependency license texts; it excludes source checkout metadata and private data.
+
+`packaging/flatpak/` wraps that same prebuilt app in GNOME Platform 49. The sandbox
+uses GTK portals and scoped Omarchy theme reads, BlueZ D-Bus, and broad device
+permission required for direct serial. It does not grant general home access.
+The release workflow builds native + both Flatpak architectures and gates public
+assets on installed-app GUI smoke tests. Shared runtimes use Flathub signatures;
+the app bundle uses GitHub checksums, not independent signing. Flatpak app updates
+rerun the installer; there is no hosted app OSTree update repository yet.
+
 | Path | Purpose |
 | --- | --- |
 | `native/niimstudio/app.py` | GTK lifecycle, bounded asset serving/bridge, native export, smoke profiles |

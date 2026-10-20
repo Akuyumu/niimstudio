@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-}" in
+  --update) echo "Update this Flatpak by rerunning the NiimStudio installer with --flatpak."; exit 0 ;;
+  --uninstall) echo "Run on the host: flatpak uninstall --user io.github.niimstudio.App (keeps label data)."; exit 0 ;;
+esac
+exec /app/share/niimstudio/scripts/niimstudio "$@"

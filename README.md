@@ -28,13 +28,31 @@ desktop, not Omarchy's shell or window manager.
 
 ## Quick start
 
-This is an early source release; there is no prebuilt installer yet. You need
+Install **v0.1.0** with one command on a Linux desktop:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Akuyumu/niimstudio/main/install.sh | bash
+```
+
+Then open **NiimStudio** from your app menu. No Git, Node, npm, AUR, or source
+build needed. The script uses a small native bundle when the required GTK/WebKit
+runtime is available; otherwise it offers a **Flatpak** with the runtime included.
+Flatpak bundles are provided for **x86-64 and ARM64**. Missing packages and the
+Flathub runtime repository require consent; **do not run the installer with sudo**.
+
+[Inspect the script, pin a version, update or uninstall](docs/INSTALLING.md).
+This targets compatible Linux desktops, not every old kernel or 32-bit system.
+
+<details>
+<summary>Build from source instead (developers)</summary>
+
+You need
 **Node.js 22.18+**, **Python 3.11+ with PyGObject**, **GTK 4.12+**,
 **Libadwaita 1.5+**, **WebKitGTK 6**, and BlueZ for Bluetooth.
 
 ### 1. Install the dependencies for your desktop
 
-<details open>
+<details>
 <summary>Omarchy / Arch Linux</summary>
 
 On Omarchy:
@@ -87,7 +105,9 @@ The user-local install adds **NiimStudio** to your app menu and a `niimstudio`
 command in `~/.local/bin`. Keep the source directory in place: the launcher uses
 that copy. No root access is needed for the build or launcher installation.
 
-### 3. Connect your printer
+</details>
+
+### Connect your printer
 
 Click **Devices**, then choose USB or scan for Bluetooth LE. Recognized printers
 provide the resolution and feed direction; supported rolls also provide their
@@ -126,6 +146,9 @@ Reconnect can be disabled in Devices and never replays an interrupted job.
 Saved labels/drafts are under `~/.local/share/niimstudio/`, device history and the
 reconnect preference under `~/.config/niimstudio/settings.json`, and disposable
 cache under `~/.cache/niimstudio/` (all respect the corresponding XDG variables).
+Flatpak isolates those paths under `~/.var/app/io.github.niimstudio.App/` instead;
+native and Flatpak libraries are not automatically merged. See the install guide
+before switching formats. Uninstalling either format keeps saved labels/settings.
 Use JSON exports as portable backups. On Omarchy the palette is read every two
 seconds; **`NIIMSTUDIO_THEME=gtk ./scripts/niimstudio`** opts into system appearance
 instead. The printable artwork stays black/white regardless of the UI theme.

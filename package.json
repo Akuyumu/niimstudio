@@ -8,6 +8,8 @@
 		"test": "bash scripts/test",
 		"test:smoke": "bash scripts/niimstudio --smoke-test",
 		"test:restart": "./scripts/test-restart",
+		"package:release": "python3 scripts/package-release.py",
+		"test:install": "python3 scripts/test-release-install.py .release",
 		"check": "npm run lint && npm test && npm run build",
 		"dev-check": "npm run sv-check && npm run dev",
 		"dev": "vite",

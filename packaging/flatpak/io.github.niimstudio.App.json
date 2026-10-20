@@ -1,0 +1,36 @@
+{
+  "app-id": "io.github.niimstudio.App",
+  "runtime": "org.gnome.Platform",
+  "runtime-version": "49",
+  "sdk": "org.gnome.Sdk",
+  "command": "niimstudio",
+  "finish-args": [
+    "--share=ipc",
+    "--share=network",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--device=all",
+    "--system-talk-name=org.bluez",
+    "--filesystem=xdg-config/omarchy:ro",
+    "--filesystem=xdg-data/omarchy/themes:ro",
+    "--filesystem=~/.local/state/omarchy:ro"
+  ],
+  "modules": [
+    {
+      "name": "niimstudio",
+      "buildsystem": "simple",
+      "build-commands": [
+        "mkdir -p /app/share/niimstudio",
+        "cp -a . /app/share/niimstudio/",
+        "install -Dm755 flatpak-launch /app/bin/niimstudio",
+        "install -Dm644 io.github.niimstudio.App.desktop /app/share/applications/io.github.niimstudio.App.desktop",
+        "install -Dm644 packaging/io.github.niimstudio.App.svg /app/share/icons/hicolor/scalable/apps/io.github.niimstudio.App.svg"
+      ],
+      "sources": [
+        { "type": "archive", "path": "../../.release/niimstudio-linux.tar.gz" },
+        { "type": "file", "path": "flatpak-launch" },
+        { "type": "file", "path": "io.github.niimstudio.App.desktop" }
+      ]
+    }
+  ]
+}

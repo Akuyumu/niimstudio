@@ -59,6 +59,28 @@ Smoke profiles are temporary and disable real connect/write/pair/scan operations
 the chooser can open and be dismissed to verify cancellation behavior. Screenshots
 use synthetic labels, never the real saved library.
 
+## Release packaging
+
+```bash
+npm run check
+npm run package:release
+npm run test:install
+```
+
+`scripts/package-release.py` packages built assets and dependency notices into
+`.release/niimstudio-linux.tar.gz`, plus an installer and SHA256SUMS. It needs the
+locked node_modules for notices; end users do not need Node. `test:install` uses
+an isolated HOME (including spaces), installs/reinstalls the actual bundle and
+uninstalls it while asserting label data is retained. The `--version`, `--update`,
+and `--uninstall` launcher paths do not import GTK and still work with broken GI.
+
+Release CI builds the Flatpak manifest in `packaging/flatpak/` on x86-64/ARM64,
+runs the real UI smoke test inside the sandbox, and publishes only after success.
+Use workflow_dispatch to validate packaging without a release. To publish, ensure
+package.json/native version agree, update release notes, and push `v<version>`.
+Do not retag or overwrite an existing release. No actual printer commands run in
+release tests. Generated `.release/` and `.flatpak-*` directories stay ignored.
+
 ## Safety and support claims
 
 Never run NiimStudio as root, disable WebKit's sandbox, replace the desktop's

@@ -3,10 +3,28 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from niimstudio.theme import DEFAULT_PALETTE, gtk_css, gtk_palette, read_palette
+from niimstudio.theme import DEFAULT_PALETTE, gtk_css, gtk_palette, read_palette, theme_paths
 
 
 class ThemeTests(unittest.TestCase):
+    def test_flatpak_also_checks_explicitly_exposed_host_theme_paths(self):
+        from unittest.mock import patch
+
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "FLATPAK_ID": "io.github.niimstudio.App",
+                    "XDG_CONFIG_HOME": "/sandbox/config",
+                    "XDG_STATE_HOME": "/sandbox/state",
+                },
+            ),
+            patch("pathlib.Path.home", return_value=Path("/home/test")),
+        ):
+            paths = theme_paths()
+        self.assertEqual(paths[0], Path("/sandbox/state/omarchy/current/theme/colors.toml"))
+        self.assertIn(Path("/home/test/.config/omarchy/current/theme/colors.toml"), paths)
+
     def test_missing_omarchy_palette_can_defer_to_gtk(self):
         self.assertIsNone(read_palette([], fallback=False))
 
