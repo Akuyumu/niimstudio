@@ -178,7 +178,7 @@
           disabled={blocked || refreshing}
           onclick={refresh}>Check roll again</button
         >{/if}
-      <button class="btn btn-secondary" onclick={() => modal?.hide()}
+      <button class="btn btn-secondary" data-action="keep-stock-design" onclick={() => modal?.hide()}
         >{proposed && !stockMatches(current, proposed) ? "Keep design" : "Close"}</button>
       {#if proposed}<button
           class="btn btn-primary"

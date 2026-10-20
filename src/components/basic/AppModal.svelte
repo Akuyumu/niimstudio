@@ -20,6 +20,7 @@
   let fullyHidden = false;
   const onShown = () => {
     fullyShown = true;
+    modalEl.dataset.modalReady = "true";
     modalEl.querySelector<HTMLElement>("[data-modal-autofocus]")?.focus();
   };
   const onHide = (event: Event) => {
@@ -27,6 +28,7 @@
       event.preventDefault();
       return;
     }
+    delete modalEl.dataset.modalReady;
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
   };
   const onHidden = () => {

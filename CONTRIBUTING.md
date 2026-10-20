@@ -76,7 +76,9 @@ and `--uninstall` launcher paths do not import GTK and still work with broken GI
 
 Release CI builds the Flatpak manifest in `packaging/flatpak/` on x86-64/ARM64,
 runs the real UI smoke test inside the sandbox, and publishes only after success.
-Use workflow_dispatch to validate packaging without a release. To publish, ensure
+Use **Package validation** (`package-validation.yml`, workflow_dispatch) to test
+packaging without a release. **Release** runs only for version tags and reuses
+those same checks before publishing. To publish, ensure
 package.json/native version agree, update release notes, and push `v<version>`.
 Do not retag or overwrite an existing release. No actual printer commands run in
 release tests. Generated `.release/` and `.flatpak-*` directories stay ignored.
