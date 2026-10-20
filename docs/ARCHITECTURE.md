@@ -44,6 +44,15 @@ save (2 s timeout, retry-safe); printing still requires confirmation. Sidebar
 validation is cached and invalidated by writes and cross-window storage events; the
 stock dialog is retained after first use. `scripts/benchmark-lifecycle` and
 `scripts/test-close` verify these paths with a synthetic profile.
+
+`native/niimstudio/updates.py` performs the optional launch check for managed
+native installs only. It returns a newer stable tag from the public GitHub API and
+`StudioPage.svelte` renders a dismissible footer bar; **Update now** calls the
+installed `managed_install.py update --version <tag> --yes --no-deps`, which reuses
+the checksum-verifying installer, and **Restart** quits through the normal draft
+flush. The frontend never supplies a URL. The request has no label/printer data and
+is skipped for Flatpak, source checkouts, smoke mode, and
+`NIIMSTUDIO_NO_UPDATE_CHECK=1`.
 `CodeEditor.svelte` validates content and provides live QR/Code 128/EAN-13 previews
 before adding an object. Selected codes expose Edit content and double-click
 editing. New QR objects include a serialized four-module quiet zone; legacy QR

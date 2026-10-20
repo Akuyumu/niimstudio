@@ -6,11 +6,15 @@ type NativeMessage = {
   value?: unknown;
   error?: string;
   cancelled?: boolean;
-  event?: "data" | "disconnect" | "theme" | "reconnect-policy" | "fonts";
+  event?: "data" | "disconnect" | "theme" | "reconnect-policy" | "fonts" | "update" | "updateProgress";
   enabled?: boolean;
   data?: number[];
   palette?: Palette;
   families?: string[];
+  version?: string;
+  tag?: string;
+  state?: "ready" | "failed";
+  message?: string;
   reason?: string;
 };
 

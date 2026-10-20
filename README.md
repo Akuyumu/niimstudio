@@ -28,7 +28,7 @@ desktop, not Omarchy's shell or window manager.
 
 ## Quick start
 
-Install **v0.1.1** with one command on a Linux desktop:
+Install **v0.1.2** with one command on a Linux desktop:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Akuyumu/niimstudio/main/install.sh | bash
@@ -42,6 +42,20 @@ Flathub runtime repository require consent; **do not run the installer with sudo
 
 [Inspect the script, pin a version, update or uninstall](docs/INSTALLING.md).
 This targets compatible Linux desktops, not every old kernel or 32-bit system.
+
+### Updating
+
+Native installs can update from the app: when a newer release is available, a
+small bar appears above the footer and can download the verified bundle and then
+restart. The same update is available from a terminal:
+
+```bash
+~/.local/bin/niimstudio --update
+```
+
+Flatpak app bundles are updated by rerunning the installer (`--flatpak`); ordinary
+`flatpak update` only updates the shared runtimes. Saved labels and settings are
+kept in both cases. See [update details](docs/INSTALLING.md#native-updates-migration-and-removal).
 
 <details>
 <summary>Build from source instead (developers)</summary>
@@ -161,9 +175,13 @@ cut radius. Unknown printer profiles and unconfirmed/mismatched stock sizes are
 blocked from printing rather than guessed.
 
 Normal editing and printing are offline. The optional ZPL import renderer sends
-the ZPL you choose to [Labelary](https://labelary.com); nothing else adds telemetry
-or a cloud account. Pairing and printing are never triggered automatically.
-Reconnect can be disabled in Devices and never replays an interrupted job.
+the ZPL you choose to [Labelary](https://labelary.com). A managed native install
+also asks the public GitHub API once per launch whether a newer release exists
+(a version request only; no labels, printer, or usage data). Set
+`NIIMSTUDIO_NO_UPDATE_CHECK=1` to skip that check, or use **Later** in the app.
+Nothing else adds telemetry or a cloud account. Pairing and printing are never
+triggered automatically. Reconnect can be disabled in Devices and never replays
+an interrupted job.
 
 ## Data, themes, and development
 

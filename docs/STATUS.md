@@ -1,5 +1,17 @@
 # Status — 2026-10-20
 
+## v0.1.2 patch
+
+- Managed native installs check the public GitHub release feed once per launch
+  (after the first frame). A footer bar offers a checksum-verified update using
+  the existing installer with `--no-deps`, then a restart. Flatpak and source
+  checkouts are skipped; `NIIMSTUDIO_NO_UPDATE_CHECK=1` opts out. Only the app
+  version is sent as a user agent; no labels, printer data, or telemetry.
+- README and the install guide document the in-app and terminal update paths.
+- GUI smoke covers the bar/dismissal; unit tests cover version comparison,
+  managed-install detection, offline behavior, the fixed API/user agent, and the
+  pinned non-privileged update command.
+
 ## v0.1.1 patch
 
 - Native overlays use no fade/slide or backdrop blur, avoiding unnecessary GPU
@@ -48,7 +60,7 @@
 
 ## Automated verification
 
-- 59 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
+- 66 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
   fragmentation, service discovery, notifications, and cleanup; mocked pairing
   agents/prompts; palette safety/GTK compositing, bridge validation, and device history.
 - Installer tests cover checksum failure, traversal/links, update rollback,

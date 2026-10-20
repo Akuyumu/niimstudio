@@ -598,6 +598,34 @@
     line-height: 1.6;
     margin-top: 18px;
   }
+  .studio-update {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+    padding: 8px 10px 8px 12px;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 10px;
+    background: var(--bs-tertiary-bg);
+    color: var(--studio-foreground);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .studio-update > .material-icons {
+    color: var(--studio-accent);
+    font-size: 18px;
+  }
+  .studio-update > span {
+    flex: 1;
+  }
+  .studio-update-error {
+    display: block;
+    color: var(--studio-red);
+  }
+  .studio-update-later {
+    color: var(--bs-secondary-color);
+    font-size: 11px;
+  }
   .studio-footer {
     display: flex;
     justify-content: space-between;

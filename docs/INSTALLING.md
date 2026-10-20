@@ -1,4 +1,4 @@
-# Installing NiimStudio v0.1.1
+# Installing NiimStudio v0.1.2
 
 ## One command
 
@@ -46,9 +46,9 @@ its disposable test VMs so it can exercise the real sandboxed app.
 This executes project code you choose to trust. For an inspect-before-running flow:
 
 ```bash
-curl -fsSLo niimstudio-install.sh https://raw.githubusercontent.com/Akuyumu/niimstudio/v0.1.1/install.sh
+curl -fsSLo niimstudio-install.sh https://raw.githubusercontent.com/Akuyumu/niimstudio/v0.1.2/install.sh
 less niimstudio-install.sh
-bash niimstudio-install.sh --version v0.1.1
+bash niimstudio-install.sh --version v0.1.2
 ```
 
 ```bash
@@ -115,12 +115,22 @@ niimstudio --update
 niimstudio --uninstall
 ```
 
-Close the app before updating/uninstalling. Updates download and verify a release
-before switching the active app. Previous releases are retained, so running
-processes do not lose their assets. Native dependencies remain maintained by your
-distribution. Native auto-install commands cover modern Arch/Omarchy, Ubuntu,
-Debian and Fedora; other distros can use Flatpak or provide the runtime themselves.
-Old distro packages are not automatically replaced with third-party packages.
+A managed native install checks the public release feed once per launch. When a
+newer release exists, a slim bar above the footer offers **Update now**; the app
+downloads the same checksum-verified bundle as `--update`, then offers **Restart**.
+The update uses `--no-deps`, so it never installs system packages or asks for
+sudo; if the new release needs a dependency that is missing, the terminal command
+is the fallback. `NIIMSTUDIO_NO_UPDATE_CHECK=1` disables the launch check; the
+version request carries no label or usage data. Source checkouts and Flatpak do
+not self-update this way.
+
+Close the app before updating from a terminal or uninstalling. Updates download
+and verify a release before switching the active app. Previous releases are
+retained, so running processes do not lose their assets. Native dependencies
+remain maintained by your distribution. Native auto-install commands cover modern
+Arch/Omarchy, Ubuntu, Debian and Fedora; other distros can use Flatpak or provide
+the runtime themselves. Old distro packages are not automatically replaced with
+third-party packages.
 
 Managed code lives under `${XDG_DATA_HOME:-~/.local/share}/niimstudio-app/`, separate
 from saved label data. Uninstall keeps drafts, labels, settings and source
@@ -161,7 +171,7 @@ Both uninstall methods keep user data by default. Back up important labels first
 
 ## Packaging references
 
-v0.1.1 ships the native `tar.gz`, x86-64/ARM64 `.flatpak` bundles, `install.sh`,
+v0.1.2 ships the native `tar.gz`, x86-64/ARM64 `.flatpak` bundles, `install.sh`,
 and `SHA256SUMS`. Neither format includes private labels or proprietary NIIMBOT
 assets; source/dependency licenses are retained. This is not an AppImage, `.deb`,
 `.rpm`, or AUR release. The small installer + release download approach was

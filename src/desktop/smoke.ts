@@ -33,6 +33,18 @@ export async function runEditorSmoke(context: {
   const showcase = { ...context.exportLabel(), title: window.__NIIMSTUDIO_DEMO__ ? "Coffee beans" : "Example label" };
   const { overlayFrames, ...overlayResults } = await runOverlaySmoke();
   const overlaysWork = Object.values(overlayResults).every(Boolean);
+  await nativeRequest("testUpdate");
+  const updateDeadline = Date.now() + 3000;
+  while (!document.querySelector('[data-testid="update-banner"]') && Date.now() < updateDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    await tick();
+  }
+  const banner = document.querySelector<HTMLElement>('[data-testid="update-banner"]');
+  const updateBannerWorks =
+    !!banner && banner.textContent!.includes("9.9.9") && !!banner.querySelector('[data-action="update-now"]');
+  banner?.querySelector<HTMLButtonElement>('[data-action="update-later"]')?.click();
+  await tick();
+  const updateBannerDismisses = !document.querySelector('[data-testid="update-banner"]');
   const cacheResults = await runLibraryCacheSmoke(showcase);
   const cacheWorks = Object.values(cacheResults).every(Boolean);
   const stockResults = await runStockSmoke(context);
@@ -171,6 +183,8 @@ export async function runEditorSmoke(context: {
       stockSetupWorks &&
       overlaysWork &&
       cacheWorks &&
+      updateBannerWorks &&
+      updateBannerDismisses &&
       runtimeErrors.length === 0,
     objects: before,
     afterUndo,
@@ -191,6 +205,8 @@ export async function runEditorSmoke(context: {
     ...stockResults,
     ...overlayResults,
     ...cacheResults,
+    updateBannerWorks,
+    updateBannerDismisses,
     runtimeErrors,
     overlayFrames: overlaysWork ? undefined : overlayFrames,
     artifacts,

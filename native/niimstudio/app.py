@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -25,6 +26,7 @@ from .history import DeviceHistory
 from .lifecycle import enabled, mark
 from .serial_transport import SerialTransport, discover_serial
 from .theme import gtk_css, gtk_palette, read_palette
+from .updates import fetch_latest, managed_root, run_update, updates_enabled
 
 LOG = logging.getLogger("niimstudio")
 mark("gtk_imported")
@@ -62,6 +64,9 @@ def validate_message(message):
     if message.get("op") not in {
         "ready",
         "workspaceReady",
+        "updateApp",
+        "quit",
+        "testUpdate",
         "connect",
         "disconnect",
         "write",
@@ -106,6 +111,8 @@ class StudioApplication(Adw.Application):
         self.close_generation = 0
         self.close_prompt = False
         self.close_timer = None
+        self.update_checked = False
+        self.update_started = False
         self.selected_device = None
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="niimstudio-io")
         self.palette = None
@@ -310,6 +317,57 @@ class StudioApplication(Adw.Application):
             self.bluez = BlueZ()
         return self.bluez
 
+    def check_updates(self):
+        if self.smoke or self.update_started or not updates_enabled() or managed_root(ROOT) is None:
+            return GLib.SOURCE_REMOVE
+
+        def work():
+            try:
+                info = fetch_latest(__version__)
+            except Exception as error:  # Offline checks are silent, never intrusive.
+                LOG.info("Update check skipped: %s", error)
+                return
+            if info:
+                GLib.idle_add(self.offer_update, info)
+
+        threading.Thread(target=work, name="niimstudio-update-check", daemon=True).start()
+        return GLib.SOURCE_REMOVE
+
+    def offer_update(self, info):
+        if not self.shutting_down and not self.update_started:
+            self.send({"event": "update", "version": info["version"], "tag": info["tag"]})
+        return GLib.SOURCE_REMOVE
+
+    def start_update(self, request_id, tag):
+        root = managed_root(ROOT)
+        if self.smoke:
+            self.reply(request_id, error="Updates are unavailable in smoke tests")
+            return
+        if root is None:
+            self.reply(request_id, error="This copy is not a managed native install. See docs/INSTALLING.md.")
+            return
+        if not isinstance(tag, str) or not tag or len(tag) > 40 or any(c not in "0123456789.v-+" for c in tag):
+            self.reply(request_id, error="Invalid release tag")
+            return
+        if self.update_started:
+            self.reply(request_id, error="An update is already running")
+            return
+        self.update_started = True
+        self.reply(request_id, {"started": True})
+
+        def work():
+            try:
+                ok, message = run_update(root, tag)
+            except Exception as error:
+                ok, message = False, str(error)
+            event = {"event": "updateProgress", "state": "ready" if ok else "failed", "version": tag.lstrip("v")}
+            if not ok:
+                event["message"] = message or "The update did not finish."
+                self.update_started = False
+            GLib.idle_add(self.send, event)
+
+        threading.Thread(target=work, name="niimstudio-update", daemon=True).start()
+
     def on_message(self, _manager, value):
         try:
             raw = value.to_json(0)
@@ -350,6 +408,18 @@ class StudioApplication(Adw.Application):
                     # The editor hook exists only after mount; schedule from the
                     # readiness handshake rather than guessing from `ready`.
                     self.smoke_test()
+                elif not self.update_checked:
+                    self.update_checked = True
+                    # Keep the first frame and startup work ahead of any network.
+                    GLib.timeout_add(1500, self.check_updates)
+            elif operation == "updateApp":
+                self.start_update(request_id, request.get("tag"))
+            elif operation == "quit":
+                self.reply(request_id)
+                self.prepare_close()
+            elif operation == "testUpdate":
+                self.reply(request_id, True)
+                self.send({"event": "update", "version": "9.9.9", "tag": "v9.9.9"})
             elif operation == "connect":
                 self.choose_printer(request_id, automatic=request.get("automatic") is True)
             elif operation == "knownDevice":
