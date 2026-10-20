@@ -33,6 +33,7 @@ export const DEFAULT_LABEL_PRESETS: LabelPreset[] = [
   { width: 50, height: 30, unit: "mm", dpmm: 8, printDirection: "top", shape: "rect" },
   // 300dpi
   { width: 40, height: 12, unit: "mm", dpmm: 11.81, printDirection: "left", shape: "rect", title: "40x12mm 300dpi" },
+  { width: 40, height: 30, unit: "mm", dpmm: 11.81, printDirection: "top", shape: "rect", title: "40x30mm 300dpi (B1 Pro)" },
   { width: 50, height: 30, unit: "mm", dpmm: 11.81, printDirection: "top", shape: "rect", title: "50x30mm 300dpi" },
 ];
 

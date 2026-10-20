@@ -3,3 +3,9 @@
 /node_modules
 .idea
 CLAUDE.md
+/.runtime
+__pycache__/
+*.py[cod]
+/.test-results/
+/AGENTS.md
+/agent.md

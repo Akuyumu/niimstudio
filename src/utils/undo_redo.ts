@@ -41,7 +41,7 @@ export class UndoRedo {
       return;
     }
 
-    if (this.index !== this.buf.length - 1 && this.index > 0 && this.index <= this.buf.length) {
+    if (this.index !== this.buf.length - 1 && this.index >= 0 && this.index < this.buf.length) {
       this.buf = this.buf.slice(0, this.index + 1);
     }
 

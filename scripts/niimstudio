@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." && pwd)"
+export PYTHONPATH="$root/native${PYTHONPATH:+:$PYTHONPATH}"
+python="$("$root/scripts/system-python")"
+if [[ ! -f "$root/dist/index.html" ]]; then
+  echo "Editor is not built. In $root, run npm ci && npm run build" >&2
+  exit 1
+fi
+if ! "$python" -c 'import gi; gi.require_version("WebKit", "6.0")' 2>/dev/null; then
+  if [[ -f "$root/.runtime/root/usr/lib/girepository-1.0/WebKit-6.0.typelib" ]]; then
+    export GI_TYPELIB_PATH="$root/.runtime/root/usr/lib/girepository-1.0${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
+    export LD_LIBRARY_PATH="$root/.runtime/root/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    export XDG_DATA_DIRS="$root/.runtime/root/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+    exec "$python" "$root/scripts/local-runtime.py" "$@"
+  else
+    echo "Missing WebKitGTK 6. Install webkitgtk-6.0 (Arch), gir1.2-webkit-6.0 (Debian/Ubuntu), or webkitgtk6.0 (Fedora)." >&2
+    echo "Arch/Omarchy only: an optional signed-package runtime is available via $root/scripts/bootstrap-runtime" >&2
+    exit 1
+  fi
+fi
+exec "$python" -m niimstudio "$@"

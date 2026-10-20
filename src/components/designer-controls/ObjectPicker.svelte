@@ -10,15 +10,16 @@
     labelProps: LabelProps;
     zplImageReady: (img: Blob) => void;
     pdfImageReady: (img: HTMLCanvasElement) => void;
+    label?: string;
   }
 
-  let { onSubmit, labelProps, zplImageReady, pdfImageReady }: Props = $props();
+  let { onSubmit, labelProps, zplImageReady, pdfImageReady, label }: Props = $props();
 </script>
 
 <div class="dropdown">
   <button class="btn btn-sm btn-secondary" data-bs-toggle="dropdown" data-bs-auto-close="outside">
-    <MdIcon icon="format_shapes" />
-    <MdIcon icon="add" />
+    <MdIcon icon={label ? "more_horiz" : "format_shapes"} />
+    {#if label}<span>{label}</span>{:else}<MdIcon icon="add" />{/if}
   </button>
 
   <div class="dropdown-menu">

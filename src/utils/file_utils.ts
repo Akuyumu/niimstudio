@@ -16,6 +16,7 @@ import { CanvasUtils } from "$/utils/canvas_utils";
 import { LocalStoragePersistence } from "./persistence";
 import { csvData, loadedFonts } from "$/stores";
 import { get } from "svelte/store";
+import { isNative, nativeRequest } from "$/desktop/bridge";
 
 export class FileUtils {
   static timestamp(): number {
@@ -137,6 +138,10 @@ export class FileUtils {
   }
 
   static async downloadBase64(filename: string, mime: string, base64Data: string) {
+    if (isNative) {
+      await nativeRequest("save", { filename, base64: base64Data }, 600_000);
+      return;
+    }
     if (Capacitor.getPlatform() !== "web") {
       FileUtils.downloadBase64Capacitor(filename, base64Data);
       return;

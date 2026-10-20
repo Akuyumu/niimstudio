@@ -30,6 +30,7 @@
     } else if (to === "bottom") {
       selectedObject.canvas?.sendObjectToBack(selectedObject);
     }
+    valueUpdated();
   };
 
   const fit = () => {
@@ -76,7 +77,7 @@
   <MdIcon icon="horizontal_distribute" />
 </button>
 
-<ObjectPositionControls {selectedObject} />
+<ObjectPositionControls {selectedObject} {valueUpdated} />
 
 <div class="dropdown">
   <button

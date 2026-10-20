@@ -38,11 +38,19 @@
   import { CustomCanvas } from "$/fabric-object/custom_canvas";
   import VectorParamsControls from "$/components/designer-controls/VectorParamsControls.svelte";
   import { CanvasUtils } from "$/utils/canvas_utils";
+  import { isNative } from "$/desktop/bridge";
+  import { ExportedLabelTemplateSchema } from "$/types";
+  import SelectionToolbar from "$/desktop/SelectionToolbar.svelte";
+  import CodeEditor, { type CodeContent } from "$/desktop/CodeEditor.svelte";
+
+  let { saveTemplate }: { saveTemplate?: () => void } = $props();
 
   let htmlCanvas: HTMLCanvasElement;
 
   let fabricCanvas = $state<CustomCanvas>();
-  let labelProps = $state<LabelProps>(DEFAULT_LABEL_PROPS);
+  let labelProps = $state<LabelProps>(
+    isNative ? { ...DEFAULT_LABEL_PROPS, shape: "rounded_rect" } : DEFAULT_LABEL_PROPS,
+  );
   let previewOpened = $state<boolean>(false);
   let selectedObject = $state<fabric.FabricObject | undefined>(undefined);
   let selectedCount = $state<number>(0);
@@ -52,6 +60,28 @@
   let windowWidth = $state<number>(0);
   let undoState = $state<UndoState>({ undoDisabled: false, redoDisabled: false });
   let zoomText = $state<string>("100%");
+  let draftTimer: ReturnType<typeof setTimeout> | undefined;
+  let draftReady = false;
+  let draftState = $state("Draft saved locally");
+  let codeEditor = $state<{ kind: "qrcode" | "barcode"; existing?: QRCode | Barcode }>();
+
+  const saveDraft = () => {
+    if (!isNative || !draftReady || !fabricCanvas) return;
+    try {
+      LocalStoragePersistence.validateAndSaveObject("studio_draft", exportCurrentLabel(), ExportedLabelTemplateSchema);
+      draftState = "Draft saved locally";
+    } catch (error) {
+      draftState = "Draft not saved — export your work";
+      console.error(error);
+    }
+  };
+
+  const scheduleDraft = () => {
+    if (!isNative || !draftReady) return;
+    draftState = "Saving draft…";
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(saveDraft, 500);
+  };
 
   const undo = new UndoRedo();
 
@@ -77,6 +107,7 @@
   undo.onLabelUpdate = loadLabelData;
   undo.onStateUpdate = (state: UndoState) => {
     undoState = state;
+    scheduleDraft();
   };
 
   const deleteSelected = () => {
@@ -97,6 +128,12 @@
     const key: string = e.key.toLowerCase();
     // windows and linux users are used to ctrl, mac users use cmd
     const cmdOrCtrl = e.metaKey || e.ctrlKey;
+    if (isNative && cmdOrCtrl && key === "s") {
+      e.preventDefault();
+      if (!document.querySelector(".modal.show")) saveTemplate?.();
+      return;
+    }
+    if (document.querySelector("dialog[open], .modal.show")) return;
 
     // Esc
     if (key === "escape") {
@@ -169,6 +206,8 @@
   const onLoadRequested = (label: ExportedLabelTemplate) => {
     loadLabelData(label).then(() => undo.push(fabricCanvas!, labelProps));
   };
+  export const exportLabel = () => exportCurrentLabel();
+  export const loadLabel = (label: ExportedLabelTemplate) => onLoadRequested(label);
 
   const zplImageReady = async (img: Blob) => {
     await LabelDesignerObjectHelper.addImageBlob(fabricCanvas!, img);
@@ -188,11 +227,68 @@
   };
 
   const onObjectPicked = (objectType: OjectType) => {
+    if (isNative && (objectType === "qrcode" || objectType === "barcode")) {
+      codeEditor = { kind: objectType };
+      return;
+    }
+    if (objectType === "image") {
+      LabelDesignerObjectHelper.addImageWithFilePicker(fabricCanvas!)
+        .then((obj) => {
+          fabricCanvas!.setActiveObject(obj);
+          undo.push(fabricCanvas!, labelProps);
+        })
+        .catch(console.error);
+      return;
+    }
     const obj = LabelDesignerObjectHelper.addObject(fabricCanvas!, objectType);
     if (obj !== undefined) {
       fabricCanvas!.setActiveObject(obj);
       undo.push(fabricCanvas!, labelProps);
     }
+  };
+
+  const editCode = () => {
+    if (selectedObject instanceof QRCode) codeEditor = { kind: "qrcode", existing: selectedObject };
+    if (selectedObject instanceof Barcode) codeEditor = { kind: "barcode", existing: selectedObject };
+  };
+
+  const saveCode = (content: CodeContent) => {
+    let object = codeEditor?.existing;
+    if (object instanceof QRCode) {
+      object.set({ text: content.text, ecl: content.ecl, mode: "Byte", qrVersion: 0, quietZone: 4 });
+    } else if (object instanceof Barcode) {
+      object.set({ encoding: content.encoding, text: content.text, printText: content.printText });
+    } else if (content.kind === "qrcode") {
+      const available = Math.min(labelProps.size.width, labelProps.size.height) - 8;
+      const scale = Math.max(1, Math.min(3, Math.floor(available / (content.modules + 8))));
+      const size = Math.ceil(((content.modules + 8) * scale) / 2) * 2;
+      object = new QRCode({
+        ...OBJECT_DEFAULTS,
+        width: size,
+        height: size,
+        text: content.text,
+        ecl: content.ecl,
+        quietZone: 4,
+      });
+      fabricCanvas!.add(object);
+      fabricCanvas!.centerObject(object);
+    } else {
+      object = new Barcode({
+        ...OBJECT_DEFAULTS,
+        text: content.text,
+        encoding: content.encoding,
+        printText: content.printText,
+        height: Math.max(24, Math.min(64, labelProps.size.height - 16)),
+      });
+      fabricCanvas!.add(object);
+      fabricCanvas!.centerObject(object);
+    }
+    object.setCoords();
+    object.dirty = true;
+    fabricCanvas!.setActiveObject(object);
+    fabricCanvas!.requestRenderAll();
+    undo.push(fabricCanvas!, labelProps);
+    editRevision++;
   };
 
   const onIconPicked = (i: MaterialIcon) => {
@@ -293,7 +389,7 @@
       Toasts.error(e);
     }
     return false;
-  }
+  };
 
   const loadDefaultLabel = async () => {
     const urlLoaded = await loadLabelFromUrl();
@@ -345,7 +441,35 @@
     };
     fabricCanvas.setGridEnabled(!!$appConfig.gridEnabled);
 
-    await loadDefaultLabel();
+    let restored = false;
+    if (isNative) {
+      try {
+        const draft = LocalStoragePersistence.loadAndValidateObject("studio_draft", ExportedLabelTemplateSchema);
+        if (draft) {
+          await loadLabelData(draft);
+          restored = true;
+        }
+      } catch (error) {
+        console.error("Draft restore failed", error);
+      }
+    }
+    if (!restored) await loadDefaultLabel();
+    // Older NiimStudio drafts did not record a stock shape. Show the ordinary
+    // die-cut label shape by default, without changing explicit rectangular stock.
+    if (isNative) {
+      const legacyDraft = restored && localStorage.getItem("studio_stock_preview_version") === null;
+      if (labelProps.shape === undefined || (legacyDraft && labelProps.shape === "rect")) {
+        labelProps = { ...labelProps, shape: "rounded_rect" };
+      }
+      try {
+        localStorage.setItem("studio_stock_preview_version", "1");
+      } catch (error) {
+        console.warn("Could not store stock-preview preference", error);
+      }
+    }
+    if (isNative) fabricCanvas.virtualZoom(2);
+    draftReady = true;
+    window.addEventListener("beforeunload", saveDraft);
 
     window.addEventListener("hashchange", loadLabelFromUrl);
 
@@ -372,6 +496,12 @@
 
     fabricCanvas.on("text:changed", () => {
       editRevision++;
+      scheduleDraft();
+    });
+    fabricCanvas.on("mouse:dblclick", (event) => {
+      if (isNative && (event.target instanceof QRCode || event.target instanceof Barcode)) {
+        codeEditor = { kind: event.target instanceof QRCode ? "qrcode" : "barcode", existing: event.target };
+      }
     });
 
     fabricCanvas.on("object:removed", (): void => {
@@ -446,9 +576,53 @@
         }
       }
     }
+
+    if (window.__NIIMSTUDIO_SMOKE__) {
+      if (window.__NIIMSTUDIO_RESTART_VERIFY__) {
+        window.__niimstudioSmokeTest = async () => {
+          const objects = fabricCanvas!.getObjects();
+          const qr = objects.find((object) => object instanceof QRCode) as QRCode | undefined;
+          const barcodes = objects.filter((object) => object instanceof Barcode) as Barcode[];
+          const templates = LocalStoragePersistence.loadLabels();
+          const restored =
+            qr?.text === "https://example.com/updated" &&
+            qr.quietZone === 4 &&
+            barcodes.some((object) => object.text === "$)") &&
+            barcodes.some((object) => object.text === "5901234123457") &&
+            templates.some((template) => template.title === "Smoke template");
+          return {
+            ok: restored,
+            processRestartRestored: restored,
+            objects: objects.length,
+            templates: templates.length,
+          };
+        };
+        return;
+      }
+      if (window.__NIIMSTUDIO_DEMO__) {
+        const { loadSmokeDemo } = await import("$/desktop/smoke_demo");
+        loadSmokeDemo(fabricCanvas);
+      }
+      const { runEditorSmoke } = await import("$/desktop/smoke");
+      window.__niimstudioSmokeTest = () =>
+        runEditorSmoke({
+          canvas: fabricCanvas!,
+          labelProps,
+          undo,
+          addObject: onObjectPicked,
+          exportLabel: exportCurrentLabel,
+          loadLabel: loadLabelData,
+          saveDraft,
+          openPreview,
+        });
+    }
   });
 
   onDestroy(() => {
+    clearTimeout(draftTimer);
+    saveDraft();
+    window.removeEventListener("beforeunload", saveDraft);
+    delete window.__niimstudioSmokeTest;
     fabricCanvas!.dispose();
     window.removeEventListener("hashchange", loadLabelFromUrl);
   });
@@ -473,28 +647,35 @@
 <svelte:window bind:innerWidth={windowWidth} onkeydown={onKeyDown} onpaste={onPaste} />
 
 <div class="image-editor">
-  <div class="row mb-3">
+  <div class="row mb-3 studio-stage">
     <div class="col d-flex justify-content-center">
-      <div class="canvas-wrapper print-start-{labelProps.printDirection}">
+      <div
+        class="canvas-wrapper print-start-{labelProps.printDirection} label-shape-{labelProps.shape ?? 'rect'}"
+        style:--label-preview-radius={`${Number.parseFloat(zoomText) / 10}px`}>
         <canvas bind:this={htmlCanvas}></canvas>
       </div>
+      {#if isNative}<div class="studio-canvas-caption">
+          {labelProps.size.width} × {labelProps.size.height} px · Ctrl + scroll to zoom · {draftState}
+        </div>{/if}
     </div>
   </div>
 
-  <div class="row mb-1">
+  <div class="row mb-1 studio-actions">
     <div class="col d-flex justify-content-center">
       <div class="toolbar d-flex flex-wrap gap-1 justify-content-center align-items-center">
-        <LabelPropsEditor {labelProps} onChange={onUpdateLabelProps} />
+        <LabelPropsEditor {labelProps} onChange={onUpdateLabelProps} label={isNative ? "Label size" : undefined} />
 
-        <button class="btn btn-sm btn-secondary" onclick={clearCanvas} title={$tr("editor.clear")}>
-          <MdIcon icon="cancel_presentation" />
-        </button>
+        {#if !isNative}
+          <button class="btn btn-sm btn-secondary" onclick={clearCanvas} title={$tr("editor.clear")}>
+            <MdIcon icon="cancel_presentation" />
+          </button>
 
-        <SavedLabelsMenu
-          canvas={fabricCanvas!}
-          onRequestLabelTemplate={exportCurrentLabel}
-          {onLoadRequested}
-          {csvEnabled} />
+          <SavedLabelsMenu
+            canvas={fabricCanvas!}
+            onRequestLabelTemplate={exportCurrentLabel}
+            {onLoadRequested}
+            {csvEnabled} />
+        {/if}
 
         <button
           class="btn btn-sm btn-secondary"
@@ -519,20 +700,19 @@
           <MdIcon icon="grid_on" />
         </button>
 
-        <button
-          class="btn btn-sm btn-secondary"
-          onclick={() => fabricCanvas?.resetVirtualZoom()}
-          title="Reset zoom">
+        <button class="btn btn-sm btn-secondary" onclick={() => fabricCanvas?.resetVirtualZoom()} title="Reset zoom">
           {zoomText}
         </button>
 
-        <CsvControl bind:enabled={csvEnabled} onPlaceholderPicked={onCsvPlaceholderPicked} />
+        {#if !isNative}
+          <CsvControl bind:enabled={csvEnabled} onPlaceholderPicked={onCsvPlaceholderPicked} />
 
-        <IconPicker onSubmit={onIconPicked} onSubmitSvg={onSvgIconPicked} />
+          <IconPicker onSubmit={onIconPicked} onSubmitSvg={onSvgIconPicked} />
 
-        <ObjectPicker onSubmit={onObjectPicked} {labelProps} {zplImageReady} {pdfImageReady}  />
+          <ObjectPicker onSubmit={onObjectPicked} {labelProps} {zplImageReady} {pdfImageReady} />
+        {/if}
 
-        <button class="btn btn-sm btn-primary ms-1" onclick={openPreview}>
+        <button class="btn btn-sm btn-secondary ms-1 studio-preview-action" onclick={openPreview}>
           <MdIcon icon="visibility" />
           {$tr("editor.preview")}
         </button>
@@ -545,51 +725,105 @@
     </div>
   </div>
 
-  <div class="row mb-1">
-    <div class="col d-flex justify-content-center">
-      <div class="toolbar d-flex flex-wrap gap-1 justify-content-center align-items-center">
-        {#if selectedCount > 0}
-          <button class="btn btn-sm btn-danger me-1" onclick={deleteSelected} title={$tr("editor.delete")}>
-            <MdIcon icon="delete" />
-          </button>
-        {/if}
+  {#snippet objectProperties()}
+    {#if selectedObject && selectedCount === 1}<GenericObjectParamsControls
+        {selectedObject}
+        {editRevision}
+        valueUpdated={controlValueUpdated} />{/if}
+    {#if selectedObject}<VectorParamsControls {selectedObject} {editRevision} valueUpdated={controlValueUpdated} />{/if}
+    {#if selectedObject instanceof fabric.IText}<TextParamsControls
+        selectedText={selectedObject}
+        {editRevision}
+        valueUpdated={controlValueUpdated} />{/if}
+    {#if selectedObject instanceof QRCode}<QrCodeParamsPanel
+        selectedQRCode={selectedObject}
+        {editRevision}
+        valueUpdated={controlValueUpdated} />{/if}
+    {#if selectedObject instanceof ArUcoMarker}<ArUcoParamsPanel
+        selectedArUco={selectedObject}
+        {editRevision}
+        valueUpdated={controlValueUpdated} />{/if}
+    {#if selectedObject instanceof Barcode}<BarcodeParamsPanel
+        selectedBarcode={selectedObject}
+        {editRevision}
+        valueUpdated={controlValueUpdated} />{/if}
+    {#if selectedObject instanceof fabric.IText || selectedObject instanceof QRCode || (selectedObject instanceof Barcode && selectedObject.encoding === "CODE128B")}<VariableInsertControl
+        {selectedObject}
+        valueUpdated={controlValueUpdated} />{/if}
+  {/snippet}
 
-        {#if selectedCount > 0}
-          <button class="btn btn-sm btn-secondary me-1" onclick={cloneSelected} title={$tr("editor.clone")}>
-            <MdIcon icon="content_copy" />
-          </button>
-        {/if}
-
-        {#if selectedObject && selectedCount === 1}
-          <GenericObjectParamsControls {selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
-        {/if}
-
-        {#if selectedObject}
-          <VectorParamsControls {selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
-        {/if}
-
-        {#if selectedObject instanceof fabric.IText}
-          <TextParamsControls selectedText={selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
-        {/if}
-
-        {#if selectedObject instanceof QRCode}
-          <QrCodeParamsPanel selectedQRCode={selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
-        {/if}
-
-        {#if selectedObject instanceof ArUcoMarker}
-          <ArUcoParamsPanel selectedArUco={selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
-        {/if}
-
-        {#if selectedObject instanceof Barcode}
-          <BarcodeParamsPanel selectedBarcode={selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
-        {/if}
-
-        {#if selectedObject instanceof fabric.IText || selectedObject instanceof QRCode || (selectedObject instanceof Barcode && selectedObject.encoding === "CODE128B")}
-          <VariableInsertControl {selectedObject} valueUpdated={controlValueUpdated} />
-        {/if}
+  {#if isNative}
+    <SelectionToolbar
+      {selectedObject}
+      {selectedCount}
+      {editRevision}
+      valueUpdated={controlValueUpdated}
+      clone={cloneSelected}
+      remove={deleteSelected}
+      {editCode}>
+      {@render objectProperties()}
+    </SelectionToolbar>
+    <div class="studio-insert-toolbar" role="group" aria-label="Add label content">
+      <button class="btn studio-insert-button" onclick={() => onObjectPicked("text")}
+        ><MdIcon icon="title" /><span>Text</span></button>
+      <button class="btn studio-insert-button" onclick={() => onObjectPicked("image")}
+        ><MdIcon icon="image" /><span>Image</span></button>
+      <button class="btn studio-insert-button" data-action="insert-qrcode" onclick={() => onObjectPicked("qrcode")}
+        ><MdIcon icon="qr_code_2" /><span>QR code</span></button>
+      <button class="btn studio-insert-button" data-action="insert-barcode" onclick={() => onObjectPicked("barcode")}
+        ><MdIcon icon="view_week" /><span>Barcode</span></button>
+      <div class="dropdown">
+        <button class="btn studio-insert-button" data-bs-toggle="dropdown" aria-label="Insert a shape"
+          ><MdIcon icon="category" /><span>Shapes</span></button>
+        <div class="dropdown-menu">
+          <button class="dropdown-item" onclick={() => onObjectPicked("rectangle")}>Rectangle</button>
+          <button class="dropdown-item" onclick={() => onObjectPicked("circle")}>Circle</button>
+          <button class="dropdown-item" onclick={() => onObjectPicked("line")}>Line</button>
+        </div>
+      </div>
+      <IconPicker onSubmit={onIconPicked} onSubmitSvg={onSvgIconPicked} label="Icons" />
+      <CsvControl bind:enabled={csvEnabled} onPlaceholderPicked={onCsvPlaceholderPicked} label="Data" />
+      <ObjectPicker onSubmit={onObjectPicked} {labelProps} {zplImageReady} {pdfImageReady} label="More" />
+      <div class="dropdown studio-document-menu">
+        <button class="btn studio-insert-button" title="Document options" data-bs-toggle="dropdown"
+          ><MdIcon icon="tune" /><span>Document</span></button>
+        <div class="dropdown-menu p-2">
+          <button class="dropdown-item" onclick={clearCanvas}>Clear label…</button>
+          <div class="studio-help px-3 py-2">Library import/export is in Templates.</div>
+        </div>
       </div>
     </div>
-  </div>
+  {:else}
+    <div class="row mb-1">
+      <div class="col d-flex justify-content-center">
+        <div class="toolbar d-flex flex-wrap gap-1 justify-content-center align-items-center">
+          {#if selectedCount > 0}
+            <button class="btn btn-sm btn-danger me-1" onclick={deleteSelected} title={$tr("editor.delete")}>
+              <MdIcon icon="delete" />
+            </button>
+          {/if}
+
+          {#if selectedCount > 0}
+            <button class="btn btn-sm btn-secondary me-1" onclick={cloneSelected} title={$tr("editor.clone")}>
+              <MdIcon icon="content_copy" />
+            </button>
+          {/if}
+
+          {@render objectProperties()}
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  {#if codeEditor}
+    <CodeEditor
+      kind={codeEditor.kind}
+      existing={codeEditor.existing}
+      availableWidth={labelProps.size.width - 8}
+      availableHeight={labelProps.size.height - 8}
+      onSave={saveCode}
+      onClose={() => (codeEditor = undefined)} />
+  {/if}
 
   {#if previewOpened}
     <PrintPreview

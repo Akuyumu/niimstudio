@@ -1,16 +1,17 @@
 <script lang="ts">
   import { tr } from "$/utils/i18n";
-  import { csvParse } from "d3-dsv";
+  import { csvParse } from "$/utils/csv";
   import MdIcon from "$/components/basic/MdIcon.svelte";
   import { type CsvParams } from "$/types";
   import { csvData } from "$/stores";
 
   interface Props {
+    label?: string;
     enabled: boolean;
     onPlaceholderPicked: (name: string) => void;
   }
 
-  let { enabled = $bindable(), onPlaceholderPicked }: Props = $props();
+  let { enabled = $bindable(), onPlaceholderPicked, label }: Props = $props();
 
   let placeholders = $state<string[]>([]);
   let rows = $state<number>(0);
@@ -33,6 +34,7 @@
     data-bs-auto-close="outside"
     title={$tr("params.csv.title")}>
     <MdIcon icon="dataset" />
+    {#if label}<span>{label}</span>{/if}
   </button>
   <div class="dropdown-menu">
     <h6 class="dropdown-header">{$tr("params.csv.title")}</h6>

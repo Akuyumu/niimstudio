@@ -28,6 +28,8 @@ import { APP_CONFIG_DEFAULTS, CSV_DEFAULT, OBJECT_DEFAULTS_TEXT } from "$/defaul
 import z from "zod";
 import { FileUtils } from "$/utils/file_utils";
 import { createPrinterInfo } from "@mmote/niimbluelib/dist/cjs/client/abstract_client";
+import { isNative } from "$/desktop/bridge";
+import { NativeNiimbotClient } from "$/desktop/client";
 
 export const fontCache = writable<string[]>([OBJECT_DEFAULTS_TEXT.fontFamily]);
 export const appConfig = writablePersisted<AppConfig>("config", AppConfigSchema, APP_CONFIG_DEFAULTS);
@@ -36,6 +38,7 @@ export const userFonts = writablePersisted<UserFont[]>("user_fonts", z.array(Use
 export const loadedFonts = writable<FontFace[]>([]);
 
 export const connectionState = writable<ConnectionState>("disconnected");
+export const printJobActive = writable(false);
 export const connectedPrinterName = writable<string>("");
 export const printerClient = writable<NiimbotAbstractClient>();
 export const heartbeatData = writable<HeartbeatData>();
@@ -67,7 +70,7 @@ export const initClient = (connectionType: ConnectionType) => {
         prevClient.disconnect();
       }
 
-      newClient = instantiateClient(connectionType);
+      newClient = isNative ? new NativeNiimbotClient() : instantiateClient(connectionType);
 
       const conf = get(appConfig);
 

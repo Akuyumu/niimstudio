@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+"""Install only a user launcher, desktop entry, and icon; preserve other files."""
+
+import os
+import shutil
+import subprocess
+from pathlib import Path
+
+root = Path(__file__).resolve().parents[1]
+data = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share"))
+launcher = Path.home() / ".local/bin/niimstudio"
+desktop = data / "applications/io.github.niimstudio.App.desktop"
+icon = data / "icons/hicolor/scalable/apps/io.github.niimstudio.App.svg"
+source_icon = root / "packaging/io.github.niimstudio.App.svg"
+marker = f"X-NiimStudio-Project={root}"
+
+if launcher.exists() or launcher.is_symlink():
+    if not launcher.is_symlink() or launcher.resolve() != root / "scripts/niimstudio":
+        raise SystemExit(f"Refusing to replace an unrelated launcher: {launcher}")
+if desktop.exists() and marker not in desktop.read_text().splitlines():
+    raise SystemExit(f"Refusing to replace an unrelated desktop entry: {desktop}")
+if icon.exists() and "<!-- NiimStudio local install -->" not in icon.read_text():
+    raise SystemExit(f"Refusing to replace an unrelated icon: {icon}")
+if not (root / "dist/index.html").is_file():
+    raise SystemExit("Build the editor first: npm ci && npm run build")
+
+for file in (launcher, desktop, icon):
+    file.parent.mkdir(parents=True, exist_ok=True)
+if not launcher.is_symlink():
+    launcher.symlink_to(root / "scripts/niimstudio")
+executable = (
+    str(root / "scripts/niimstudio")
+    .replace("\\", "\\\\")
+    .replace('"', '\\"')
+    .replace("`", "\\`")
+    .replace("$", "\\$")
+    .replace("%", "%%")
+)
+desktop.write_text(f"""[Desktop Entry]
+Type=Application
+Name=NiimStudio
+Comment=Local NIIMBOT label designer and printer
+Exec="{executable}"
+Icon=io.github.niimstudio.App
+Terminal=false
+Categories=Graphics;
+Keywords=NIIMBOT;labels;printer;Bluetooth;
+StartupNotify=true
+{marker}
+""")
+shutil.copyfile(source_icon, icon)
+if shutil.which("update-desktop-database"):
+    subprocess.run(["update-desktop-database", str(desktop.parent)], check=True)
+print(f"Installed NiimStudio. Launch from your app menu or run: {launcher}")

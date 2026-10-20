@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Prefer the distribution interpreter with PyGObject, not a version-manager venv.
+set -euo pipefail
+if [[ -n "${NIIMSTUDIO_PYTHON:-}" ]]; then
+  candidates=("$NIIMSTUDIO_PYTHON")
+else
+  candidates=(/usr/bin/python3 /usr/bin/python)
+fi
+for python in "${candidates[@]}"; do
+  if [[ -x "$python" ]] && "$python" -c 'import sys, gi; assert sys.version_info >= (3, 11)' 2>/dev/null; then
+    echo "$python"
+    exit 0
+  fi
+done
+echo "NiimStudio needs system Python 3.11+ with PyGObject (python3-gi / python3-gobject / python-gobject)." >&2
+echo "For a custom interpreter, set NIIMSTUDIO_PYTHON to its full path." >&2
+exit 1

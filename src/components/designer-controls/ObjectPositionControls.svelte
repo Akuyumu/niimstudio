@@ -8,9 +8,10 @@
 
   interface Props {
     selectedObject: fabric.FabricObject;
+    valueUpdated?: () => void;
   }
 
-  let { selectedObject }: Props = $props();
+  let { selectedObject, valueUpdated = () => {} }: Props = $props();
   let prevObject: fabric.FabricObject | undefined;
 
   let x = $state<number>();
@@ -67,6 +68,7 @@
 
     selectedObject.setCoords();
     selectedObject.canvas?.requestRenderAll();
+    valueUpdated();
   };
 
   const toggleAspectRatio = (e: Event) => {

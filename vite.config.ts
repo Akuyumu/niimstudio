@@ -19,6 +19,12 @@ export default defineConfig({
   optimizeDeps: {
     include: ["@mmote/niimbluelib"], // Fix browser error when using `npm link @mmote/niimbluelib`
   },
+  css: {
+    preprocessorOptions: {
+      // Bootstrap 5 still uses Sass imports; retain it for upstream compatibility.
+      scss: { quietDeps: true, silenceDeprecations: ["import"] },
+    },
+  },
   resolve: {
     preserveSymlinks: true, // Fix build error when using `npm link @mmote/niimbluelib`
     alias: {

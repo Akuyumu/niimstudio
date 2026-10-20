@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Optional, unprivileged alternative to: omarchy pkg add webkitgtk-6.0
+set -euo pipefail
+root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+runtime="$root/.runtime"
+mkdir -p "$runtime/downloads" "$runtime/root"
+mapfile -t urls < <(pacman -Sp --print-format '%l' webkitgtk-6.0)
+for url in "${urls[@]}"; do
+  [[ "$url" == https://* ]] || { echo "Expected an HTTPS package URL" >&2; exit 1; }
+  archive="$runtime/downloads/${url##*/}"
+  curl --fail --location --retry 2 --output "$archive" "$url"
+  curl --fail --location --retry 2 --output "$archive.sig" "$url.sig"
+  pacman-key --verify "$archive.sig" "$archive"
+  bsdtar -xf "$archive" -C "$runtime/root" --exclude='.PKGINFO' --exclude='.BUILDINFO' --exclude='.MTREE'
+done
+echo "Local WebKit runtime is ready. No system packages or settings were changed."

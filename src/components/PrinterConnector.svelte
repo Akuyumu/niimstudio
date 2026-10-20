@@ -17,20 +17,31 @@
     heartbeatFails,
     automation,
     rfidInfo,
+    printJobActive,
   } from "$/stores";
   import type { ConnectionType } from "$/types";
   import { tr, type TranslationKey } from "$/utils/i18n";
   import MdIcon from "$/components/basic/MdIcon.svelte";
   import { Toasts } from "$/utils/toasts";
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
+  import { get } from "svelte/store";
   import { LocalStoragePersistence } from "$/utils/persistence";
   import type { MaterialIcon } from "material-icons";
   import FirmwareUpdater from "$/components/basic/FirmwareUpdater.svelte";
   import PrinterVerboseInfo from "$/components/PrinterVerboseInfo.svelte";
+  import { isNative, nativeRequest, onNativeEvent } from "$/desktop/bridge";
+  import { NativeNiimbotClient } from "$/desktop/client";
+  import { ReconnectController } from "$/desktop/reconnect";
+  import { isUserCancelled } from "$/desktop/cancellation";
 
   let connectionType = $state<ConnectionType>("bluetooth");
   let featureSupport = $state<AvailableTransports>({ webBluetooth: false, webSerial: false, capacitorBle: false });
   let verboseInfoShow = $state<boolean>(false);
+  let reconnectStatus = $state("");
+  let reconnect: ReconnectController | undefined;
+  let unlisten: (() => void) | undefined;
+  let autoAllowed = true;
+  let hasRememberedDevice = false;
 
   const percentage = (cur?: number, total?: number) => {
     if (cur === undefined || total === undefined) {
@@ -40,24 +51,53 @@
     return Math.min(Math.max(usage, 0), 100);
   };
 
-  const onConnectClicked = async () => {
+  const onConnectClicked = async (automatic = false) => {
+    if (!automatic) reconnect?.pause();
     initClient(connectionType);
     connectionState.set("connecting");
 
     try {
-      if ($printerClient instanceof NiimbotCapacitorBleClient && $automation?.autoConnectDeviceId !== undefined) {
+      if ($printerClient instanceof NativeNiimbotClient) {
+        await $printerClient.connect({ automatic });
+        const history = await nativeRequest<{ enabled: boolean; device: unknown }>("knownDevice");
+        hasRememberedDevice = !!history.device;
+        autoAllowed = history.enabled;
+        if (!automatic && autoAllowed) reconnect?.arm();
+      } else if (
+        $printerClient instanceof NiimbotCapacitorBleClient &&
+        $automation?.autoConnectDeviceId !== undefined
+      ) {
         await $printerClient.connect({ deviceId: $automation.autoConnectDeviceId });
       } else {
         await $printerClient.connect();
       }
     } catch (e) {
       connectionState.set("disconnected");
-      Toasts.error(e);
+      if (isUserCancelled(e)) return;
+      if (automatic) throw e;
+      else Toasts.error(e);
     }
   };
 
-  const onDisconnectClicked = () => {
-    $printerClient.disconnect();
+  const onDisconnectClicked = async () => {
+    if ($printJobActive) {
+      Toasts.error("Finish or cancel the current print job first.");
+      return;
+    }
+    reconnect?.pause();
+    try {
+      if ($printerClient instanceof NativeNiimbotClient) await $printerClient.disconnect({ intentional: true });
+      else await $printerClient.disconnect();
+    } catch (error) {
+      Toasts.error(error);
+    }
+  };
+
+  const onManageDevices = async () => {
+    if ($printJobActive) return;
+    reconnect?.pause();
+    if ($connectionState === "connected") await onDisconnectClicked();
+    await onConnectClicked();
   };
 
   const startHeartbeat = async () => {
@@ -86,9 +126,11 @@
   };
 
   onMount(() => {
-    featureSupport = Utils.getAvailableTransports();
+    featureSupport = isNative
+      ? { webBluetooth: true, webSerial: true, capacitorBle: false }
+      : Utils.getAvailableTransports();
 
-    connectionType = LocalStoragePersistence.loadLastConnectionType() ?? "bluetooth";
+    connectionType = isNative ? "bluetooth" : (LocalStoragePersistence.loadLastConnectionType() ?? "bluetooth");
 
     if (!featureSupport.capacitorBle && connectionType === "capacitor-ble") {
       connectionType = "bluetooth";
@@ -103,10 +145,52 @@
     if ($automation !== undefined && $automation.autoConnect && connectionType === "capacitor-ble") {
       onConnectClicked();
     }
+    if (isNative) {
+      reconnect = new ReconnectController(
+        () => onConnectClicked(true),
+        () => get(connectionState) === "disconnected" && !get(printJobActive),
+        (delay, attempting) => {
+          reconnectStatus = attempting
+            ? "Reconnecting…"
+            : delay
+              ? `Printer unavailable · retry in ${delay / 1000}s`
+              : "";
+        },
+      );
+      unlisten = onNativeEvent((message) => {
+        if (message.event === "disconnect" && autoAllowed && hasRememberedDevice) reconnect?.start();
+        if (message.event === "reconnect-policy") {
+          autoAllowed = message.enabled === true;
+          if (!autoAllowed) reconnect?.pause();
+          else if (hasRememberedDevice) {
+            if (get(connectionState) === "connected") reconnect?.arm();
+            else reconnect?.start();
+          }
+        }
+      });
+      nativeRequest<{ enabled: boolean; device: unknown }>("knownDevice")
+        .then((history) => {
+          hasRememberedDevice = !!history.device;
+          autoAllowed = history.enabled;
+          if (autoAllowed && hasRememberedDevice) reconnect?.start();
+        })
+        .catch(console.warn);
+    }
+  });
+  onDestroy(() => {
+    reconnect?.pause();
+    unlisten?.();
   });
 </script>
 
 <div class="input-group w-auto input-group-sm flex-nowrap justify-content-end">
+  {#if isNative}
+    <button
+      class="btn btn-secondary"
+      onclick={onManageDevices}
+      disabled={$connectionState === "connecting" || $printJobActive}
+      title="Select printer, pair Bluetooth, or manage reconnect"><MdIcon icon="settings_bluetooth" /> Devices</button>
+  {/if}
   {#if $connectionState === "connected"}
     <button class="btn btn-secondary" data-bs-toggle="dropdown" data-bs-auto-close="outside">
       <MdIcon icon="settings" />
@@ -217,7 +301,6 @@
           >{$tr("connector.settings.connection_sound")}</label>
       </div>
 
-
       <button class="btn btn-sm btn-outline-secondary w-100 mt-3" onclick={() => (verboseInfoShow = true)}
         >{$tr("connector.open_verbose")}</button>
 
@@ -239,7 +322,8 @@
         type="button"
         data-bs-toggle="collapse"
         data-bs-target="#tests">
-        {$tr("debug.title")} <MdIcon icon="expand_more" />
+        {$tr("debug.title")}
+        <MdIcon icon="expand_more" />
       </button>
 
       <div class="collapse" id="tests">
@@ -266,7 +350,7 @@
       ></MdIcon>
     </span>
   {:else}
-    {#if featureSupport.webBluetooth}
+    {#if featureSupport.webBluetooth && !isNative}
       <button
         disabled={$connectionState === "connecting"}
         class="btn text-nowrap {connectionType === 'bluetooth' ? 'btn-light' : 'btn-outline-secondary'}"
@@ -275,7 +359,7 @@
         {$tr("connector.bluetooth")}
       </button>
     {/if}
-    {#if featureSupport.webSerial}
+    {#if featureSupport.webSerial && !isNative}
       <button
         disabled={$connectionState === "connecting"}
         class="btn text-nowrap {connectionType === 'serial' ? 'btn-light' : 'btn-outline-secondary'}"
@@ -295,13 +379,14 @@
     {/if}
   {/if}
 
-  {#if $connectionState !== "connected"}
+  {#if $connectionState !== "connected" && !isNative}
     <button
       class="btn btn-primary"
       disabled={$connectionState === "connecting" ||
         (!featureSupport.capacitorBle && !featureSupport.webBluetooth && !featureSupport.webSerial)}
-      onclick={onConnectClicked}>
+      onclick={() => onConnectClicked()}>
       <MdIcon icon="power" />
+      {#if isNative}{$connectionState === "connecting" ? "Connecting…" : "Select printer"}{/if}
     </button>
   {/if}
 
@@ -315,6 +400,8 @@
     <PrinterVerboseInfo bind:show={verboseInfoShow} />
   {/if}
 </div>
+
+{#if isNative && reconnectStatus}<div class="studio-reconnect-status" role="status">{reconnectStatus}</div>{/if}
 
 <style>
   .dropdown-menu {

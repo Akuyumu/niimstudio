@@ -1,0 +1,11 @@
+target-version = "py311"
+line-length = 120
+
+[lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[lint.per-file-ignores]
+# GI namespace versions must be selected before importing their bindings.
+"native/niimstudio/app.py" = ["E402"]
+"native/niimstudio/devices.py" = ["E402"]
+"native/niimstudio/pairing.py" = ["E402"]

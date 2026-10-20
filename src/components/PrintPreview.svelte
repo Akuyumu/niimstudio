@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
+  import { isNative, nativeRequest } from "$/desktop/bridge";
   import { derived } from "svelte/store";
-  import { connectionState, printerClient, printerMeta } from "$/stores";
+  import { connectionState, printerClient, printerMeta, printJobActive } from "$/stores";
   import * as effects from "$/utils/post_process";
   import {
     type EncodedImage,
@@ -21,13 +22,15 @@
   import ParamLockButton from "$/components/basic/ParamLockButton.svelte";
   import { tr, type TranslationKey } from "$/utils/i18n";
   import { canvasPreprocess } from "$/utils/canvas_preprocess";
-  import { type DSVRowArray, csvParse } from "d3-dsv";
+  import { type DSVRowArray } from "d3-dsv";
+  import { csvParse } from "$/utils/csv";
   import { LocalStoragePersistence } from "$/utils/persistence";
   import MdIcon from "$/components/basic/MdIcon.svelte";
   import { Toasts } from "$/utils/toasts";
   import { CustomCanvas } from "$/fabric-object/custom_canvas";
   import { FileUtils } from "$/utils/file_utils";
   import AppModal from "$/components/basic/AppModal.svelte";
+  import { validatePrintJob } from "$/utils/print_validation";
 
   interface Props {
     labelProps: LabelProps;
@@ -42,6 +45,7 @@
 
   let previewCanvas: HTMLCanvasElement;
   let printState = $state<"idle" | "printing">("idle");
+  let cancelRequested = $state(false);
   let printProgress = $state<{ progressType: "send" | "print"; percents: number }>({
     progressType: "send",
     percents: 0,
@@ -72,6 +76,16 @@
   let currentPrintTask: AbstractPrintTask | undefined;
   let savedProps = $state<PreviewProps>({});
   let modalRef: AppModal;
+
+  $effect(() => {
+    printJobActive.set(printState === "printing");
+    if (isNative) nativeRequest("status", { printing: printState === "printing" }).catch(console.error);
+  });
+  onDestroy(() => {
+    printJobActive.set(false);
+    clearInterval(statusTimer);
+    if (isNative) nativeRequest("status", { printing: false }).catch(console.error);
+  });
 
   const disconnected = derived(connectionState, ($connectionState) => $connectionState !== "connected");
 
@@ -109,7 +123,16 @@
   };
 
   const onPrint = async () => {
+    if (printState === "printing") return;
+    const validation = validatePrintJob({
+      width: labelProps.size.width, height: labelProps.size.height, direction: labelProps.printDirection,
+      copies: quantity, pages: pagesTotal, density,
+      printheadPixels: $printerMeta?.printheadPixels,
+      densityMin: $printerMeta?.densityMin, densityMax: $printerMeta?.densityMax,
+    });
+    if (validation) { error = validation; return; }
     printState = "printing";
+    cancelRequested = false;
     error = "";
 
     $printerClient.stopHeartbeat();
@@ -147,9 +170,11 @@
       await currentPrintTask.printInit();
 
       for (let pageIdx = 0; pageIdx < pagesTotal; pageIdx++) {
+        if (cancelRequested) break;
         currentPage = pageIdx;
         console.log("Printing page", currentPage);
         await generatePreviewData(currentPage);
+        if (cancelRequested) break;
         const encoded: EncodedImage = ImageEncoder.encodeCanvas(
           previewCanvas,
           opts.pageColor!,
@@ -159,7 +184,7 @@
         await currentPrintTask.printPage(encoded, quantity);
         await currentPrintTask.waitForPageFinished();
       }
-      await currentPrintTask.waitForFinished();
+      if (!cancelRequested) await currentPrintTask.waitForFinished();
     } catch (e) {
       error = `${e}`;
       console.error(e);
@@ -177,7 +202,7 @@
     $printerClient.off("printpacketprogress", sendListener);
     $printerClient.startHeartbeat();
 
-    if (printNow && !error) {
+    if (printNow && !error && !cancelRequested) {
       modalRef.hide();
     }
   };
@@ -407,7 +432,7 @@
   });
 </script>
 
-<AppModal title={$tr("preview.title")} onClose={onModalClose} bind:show bind:this={modalRef}>
+<AppModal title={$tr("preview.title")} onClose={onModalClose} dismissible={printState === "idle"} bind:show bind:this={modalRef}>
   <div class="d-flex justify-content-center">
     {#if pagesTotal > 1}
       <button disabled={printState !== "idle"} class="btn w-100 fs-1" onclick={pageDown}>
@@ -442,6 +467,9 @@
 
     {#if error}
       <div class="alert alert-danger" role="alert">{error}</div>
+    {/if}
+    {#if cancelRequested && printState === "printing"}
+      <p class="text-warning mt-2">Stopping after the current page and its submitted copies. No more pages will be sent.</p>
     {/if}
   </div>
 
@@ -684,7 +712,7 @@
     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{$tr("preview.close")}</button>
 
     {#if printState !== "idle"}
-      <button type="button" class="btn btn-primary" disabled={$disconnected} onclick={endPrint}>
+      <button type="button" class="btn btn-primary" disabled={$disconnected || cancelRequested} onclick={() => cancelRequested = true}>
         {$tr("preview.print.cancel")}
       </button>
     {/if}

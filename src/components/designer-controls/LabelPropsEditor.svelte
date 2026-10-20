@@ -13,7 +13,7 @@
   import { printerMeta } from "$/stores";
   import { tr } from "$/utils/i18n";
   import { DEFAULT_LABEL_PRESETS } from "$/defaults";
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import { LocalStoragePersistence } from "$/utils/persistence";
   import type { PrintDirection } from "@mmote/niimbluelib";
   import MdIcon from "$/components/basic/MdIcon.svelte";
@@ -25,9 +25,10 @@
   interface Props {
     labelProps: LabelProps;
     onChange: (newProps: LabelProps) => void;
+    label?: string;
   }
 
-  let { labelProps, onChange }: Props = $props();
+  let { labelProps, onChange, label }: Props = $props();
 
   const tailPositions: TailPosition[] = ["right", "bottom", "left", "top"];
   const printDirections: PrintDirection[] = ["left", "top"];
@@ -190,17 +191,17 @@
     prevUnit = unit;
   };
 
-  const fillWithCurrentParams = () => {
+  const fillWithCurrentParams = (current: LabelProps = labelProps) => {
     prevUnit = "px";
-    width = labelProps.size.width;
-    height = labelProps.size.height;
-    printDirection = labelProps.printDirection;
-    shape = labelProps.shape ?? "rect";
-    split = labelProps.split ?? "none";
-    splitParts = labelProps.splitParts ?? 2;
-    tailPos = labelProps.tailPos ?? "right";
-    tailLength = labelProps.tailLength ?? 0;
-    mirror = labelProps.mirror ?? "none";
+    width = current.size.width;
+    height = current.size.height;
+    printDirection = current.printDirection;
+    shape = current.shape ?? "rect";
+    split = current.split ?? "none";
+    splitParts = current.splitParts ?? 2;
+    tailPos = current.tailPos ?? "right";
+    tailLength = current.tailLength ?? 0;
+    mirror = current.mirror ?? "none";
     onUnitChange();
   };
 
@@ -255,6 +256,11 @@
   });
 
   $effect(() => {
+    const current = labelProps;
+    untrack(() => fillWithCurrentParams(current));
+  });
+
+  $effect(() => {
     if (shape === "circle" && split !== "none") split = "none";
   });
 
@@ -270,6 +276,7 @@
 <div class="dropdown">
   <button class="btn btn-sm btn-secondary" data-bs-toggle="dropdown" data-bs-auto-close="outside">
     <MdIcon icon="settings" />
+    {#if label}{label}{/if}
   </button>
   <div class="dropdown-menu">
     <h6 class="dropdown-header">{$tr("params.label.menu_title")}</h6>
@@ -294,7 +301,7 @@
         {:else if labelProps.printDirection === "left"}
           ({$tr("params.label.direction")} {$tr("params.label.direction.left")})
         {/if}
-        <button class="btn btn-sm" onclick={fillWithCurrentParams}><MdIcon icon="arrow_downward" /></button>
+        <button class="btn btn-sm" onclick={() => fillWithCurrentParams()}><MdIcon icon="arrow_downward" /></button>
       </div>
 
       <LabelPresetsBrowser

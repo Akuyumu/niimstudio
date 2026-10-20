@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$root"
+export PYTHONPATH="$root/native${PYTHONPATH:+:$PYTHONPATH}"
+if [[ -d "$root/.runtime/root/usr/lib" ]]; then
+  export GI_TYPELIB_PATH="$root/.runtime/root/usr/lib/girepository-1.0${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
+  export LD_LIBRARY_PATH="$root/.runtime/root/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
+python="$("$root/scripts/system-python")"
+"$python" -m unittest discover -s tests -p 'test_*.py' -v
+node --test tests/*.test.ts
+npm run sv-check

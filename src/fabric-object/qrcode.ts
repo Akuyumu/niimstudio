@@ -19,6 +19,7 @@ export const qrCodeDefaultValues: Partial<fabric.TClassProperties<QRCode>> = {
   fill: "#ffffff",
   mode: "Byte",
   qrVersion: 0,
+  quietZone: 0,
   ...OBJECT_SIZE_DEFAULTS,
 };
 
@@ -27,16 +28,17 @@ interface UniqueQRCodeProps {
   ecl: ErrorCorrectionLevel;
   mode: Mode;
   qrVersion: QrVersion;
+  quietZone: number;
 }
 export interface QRCodeProps extends fabric.FabricObjectProps, UniqueQRCodeProps {}
 export interface SerializedQRCodeProps extends fabric.SerializedObjectProps, UniqueQRCodeProps {}
-const QRCODE_PROPS = ["text", "ecl", "size", "mode", "qrVersion"] as const;
+const QRCODE_PROPS = ["text", "ecl", "size", "mode", "qrVersion", "quietZone"] as const;
 
 export class QRCode<
-    Props extends fabric.TOptions<QRCodeProps> = Partial<QRCodeProps>,
-    SProps extends SerializedQRCodeProps = SerializedQRCodeProps,
-    EventSpec extends fabric.ObjectEvents = fabric.ObjectEvents,
-  >
+  Props extends fabric.TOptions<QRCodeProps> = Partial<QRCodeProps>,
+  SProps extends SerializedQRCodeProps = SerializedQRCodeProps,
+  EventSpec extends fabric.ObjectEvents = fabric.ObjectEvents,
+>
   extends fabric.FabricObject<Props, SProps, EventSpec>
   implements QRCodeProps
 {
@@ -61,6 +63,7 @@ export class QRCode<
    * Version
    */
   declare qrVersion: QrVersion;
+  declare quietZone: number;
 
   constructor(options?: Props) {
     super();
@@ -80,7 +83,7 @@ export class QRCode<
 
   override _set(key: string, value: any): this {
     super._set(key, value);
-    if (key === "text" || key === "ecl") {
+    if (["text", "ecl", "mode", "qrVersion", "quietZone"].includes(key)) {
       this.dirty = true;
     }
 
@@ -106,7 +109,8 @@ export class QRCode<
       return;
     }
 
-    const qrScale = Math.floor(this.width / qr.getModuleCount());
+    const quietZone = Math.max(0, this.quietZone ?? 0);
+    const qrScale = Math.floor(this.width / (qr.getModuleCount() + quietZone * 2));
     let qrWidth = qrScale * qr.getModuleCount();
     qrWidth -= qrWidth % 2; // avoid half-pixel rendering
 
@@ -117,8 +121,15 @@ export class QRCode<
     }
 
     ctx.save();
-    ctx.translate(-qrWidth / 2, -qrWidth / 2); // make top-left origin
-    ctx.translate(-0.5, -0.5); // blurry rendering fix
+    if (quietZone > 0) {
+      ctx.fillStyle = "white";
+      ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
+      const offset = -this.width / 2 + Math.floor((this.width - qr.getModuleCount() * qrScale) / 2);
+      ctx.translate(offset, offset);
+    } else {
+      ctx.translate(-qrWidth / 2, -qrWidth / 2);
+      ctx.translate(-0.5, -0.5); // preserve existing saved labels' positioning
+    }
     qr.renderTo2dContext(ctx, qrScale);
     ctx.restore();
 

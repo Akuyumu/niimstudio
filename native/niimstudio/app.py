@@ -1,0 +1,634 @@
+"""GTK4 shell and a narrow, offline-only bridge to the bundled label editor."""
+
+import base64
+import json
+import logging
+import mimetypes
+import os
+import sys
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from urllib.parse import unquote, urlsplit
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+gi.require_version("WebKit", "6.0")
+gi.require_version("Soup", "3.0")
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Soup, WebKit  # noqa: E402
+
+from . import __version__
+from .bluetooth import BluetoothTransport, BlueZ
+from .devices import DeviceChooser
+from .history import DeviceHistory
+from .serial_transport import SerialTransport, discover_serial
+from .theme import gtk_css, gtk_palette, read_palette
+
+LOG = logging.getLogger("niimstudio")
+ROOT = Path(__file__).resolve().parents[2]
+ORIGIN = "niimstudio://app/"
+
+
+def asset_path(uri, root):
+    parsed = urlsplit(uri)
+    if parsed.scheme != "niimstudio" or parsed.netloc != "app":
+        raise ValueError("Invalid application origin")
+    path = (root / unquote(parsed.path).lstrip("/")).resolve()
+    if not path.is_relative_to(root.resolve()) or not path.is_file():
+        raise ValueError("Unknown application asset")
+    return path
+
+
+def validate_message(message):
+    if not isinstance(message, dict) or type(message.get("id")) is not int or message["id"] < 1:
+        raise ValueError("Invalid bridge message")
+    if message.get("op") not in {
+        "ready",
+        "connect",
+        "disconnect",
+        "write",
+        "save",
+        "status",
+        "log",
+        "remember",
+        "knownDevice",
+        "testSnapshot",
+        "testDismissDevices",
+    }:
+        raise ValueError("Unknown bridge operation")
+    return message
+
+
+class StudioApplication(Adw.Application):
+    def __init__(self, smoke=False):
+        super().__init__(
+            application_id="io.github.niimstudio.App",
+            flags=Gio.ApplicationFlags.NON_UNIQUE if smoke else Gio.ApplicationFlags.DEFAULT_FLAGS,
+        )
+        self.smoke = smoke
+        self.window = None
+        self.chooser = None
+        self.bluez = None
+        self.transport = None
+        self.connecting = False
+        self.generation = 0
+        self.shutting_down = False
+        self.editor_ready = False
+        self.selected_device = None
+        self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="niimstudio-io")
+        self.palette = None
+        self.theme_source = None
+        self.theme_signature = None
+        self.css = Gtk.CssProvider()
+        self.connect("activate", self.activate_window)
+        self.connect("shutdown", self.shutdown_app)
+
+    def run_task(self, function, on_success=None, on_error=None):
+        if self.shutting_down:
+            return
+        future = self.executor.submit(function)
+
+        def complete(done):
+            try:
+                result = done.result()
+            except Exception as error:
+                LOG.info("Device operation failed: %s", error)
+                if on_error:
+                    GLib.idle_add(deliver, on_error, error)
+            else:
+                if on_success:
+                    GLib.idle_add(deliver, on_success, result)
+
+        def deliver(callback, value):
+            if not self.shutting_down:
+                callback(value)
+            return GLib.SOURCE_REMOVE
+
+        future.add_done_callback(complete)
+
+    def activate_window(self, _app):
+        if self.window:
+            self.window.present()
+            return
+        self.window = Adw.ApplicationWindow(
+            application=self, title="NiimStudio", default_width=1380, default_height=900
+        )
+        self.window.connect("close-request", self.confirm_close)
+        layout = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(Adw.WindowTitle(title="NiimStudio", subtitle="Local label workspace"))
+        about = Gtk.Button(icon_name="help-about-symbolic", tooltip_text="About NiimStudio")
+        about.connect("clicked", self.about)
+        header.pack_end(about)
+        layout.add_top_bar(header)
+        self.window.set_content(layout)
+
+        data = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "niimstudio"
+        cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "niimstudio"
+        if self.smoke:
+            import tempfile
+
+            self.smoke_dir = tempfile.TemporaryDirectory(prefix="niimstudio-smoke-")
+            profile = Path(os.environ.get("NIIMSTUDIO_TEST_PROFILE", self.smoke_dir.name)).resolve()
+            marker = profile / ".niimstudio-test-profile"
+            unsafe = profile == data.resolve() or profile.is_relative_to(data.resolve())
+            unsafe = unsafe or (profile.is_dir() and any(profile.iterdir()) and not marker.is_file())
+            if unsafe:
+                LOG.error("A smoke profile must be empty or marked as synthetic; never use real application data")
+                self.smoke_failed = True
+                self.quit()
+                return
+            profile.mkdir(parents=True, exist_ok=True)
+            marker.write_text("Synthetic NiimStudio test data only\n")
+            data, cache = profile / "data", profile / "cache"
+        self.history = DeviceHistory(profile / "settings.json" if self.smoke else None)
+        data.mkdir(parents=True, exist_ok=True, mode=0o700)
+        cache.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self.network = WebKit.NetworkSession.new(str(data), str(cache))
+        context = WebKit.WebContext.new()
+        context.register_uri_scheme("niimstudio", self.serve_asset)
+        security = context.get_security_manager()
+        security.register_uri_scheme_as_secure("niimstudio")
+        security.register_uri_scheme_as_cors_enabled("niimstudio")
+        manager = WebKit.UserContentManager.new()
+        manager.register_script_message_handler("studio", None)
+        manager.connect("script-message-received::studio", self.on_message)
+        manager.add_script(
+            WebKit.UserScript.new(
+                f"window.__NIIMSTUDIO_NATIVE__ = true; window.__NIIMSTUDIO_SMOKE__ = {str(self.smoke).lower()}; window.__NIIMSTUDIO_DEMO__ = {str(self.smoke and bool(os.environ.get('NIIMSTUDIO_DEMO'))).lower()}; window.__NIIMSTUDIO_RESTART_VERIFY__ = {str(self.smoke and bool(os.environ.get('NIIMSTUDIO_RESTART_VERIFY'))).lower()};",
+                WebKit.UserContentInjectedFrames.TOP_FRAME,
+                WebKit.UserScriptInjectionTime.START,
+                None,
+                None,
+            )
+        )
+        self.webview = WebKit.WebView(web_context=context, network_session=self.network, user_content_manager=manager)
+        settings = self.webview.get_settings()
+        settings.set_enable_developer_extras(bool(os.environ.get("NIIMSTUDIO_DEBUG")))
+        settings.set_enable_write_console_messages_to_stdout(bool(os.environ.get("NIIMSTUDIO_DEBUG")) or self.smoke)
+        settings.set_enable_page_cache(False)
+        self.webview.connect("decide-policy", self.decide_policy)
+        self.webview.connect("load-failed", self.load_failed)
+        self.webview.connect("web-process-terminated", self.process_terminated)
+        layout.set_content(self.webview)
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(), self.css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+        self.sync_theme()
+        self.theme_timer = GLib.timeout_add_seconds(2, self.sync_theme)
+        self.run_task(BlueZ, lambda bluez: setattr(self, "bluez", bluez))
+        self.webview.load_uri(ORIGIN + "index.html")
+        self.window.present()
+        if self.smoke:
+            GLib.timeout_add_seconds(75, self.smoke_timeout)
+
+    def serve_asset(self, request):
+        try:
+            path = asset_path(request.get_uri(), ROOT / "dist")
+            data = path.read_bytes()
+            mime = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+            stream = Gio.MemoryInputStream.new_from_bytes(GLib.Bytes.new(data))
+            response = WebKit.URISchemeResponse.new(stream, len(data))
+            response.set_content_type(mime)
+            headers = Soup.MessageHeaders.new(Soup.MessageHeadersType.RESPONSE)
+            headers.append("Content-Type", mime)
+            headers.append("Access-Control-Allow-Origin", "*")
+            headers.append(
+                "Content-Security-Policy",
+                (
+                    "default-src 'self' niimstudio: data: blob:; script-src 'self' niimstudio:; "
+                    "style-src 'self' niimstudio: 'unsafe-inline'; img-src 'self' niimstudio: data: blob:; "
+                    "font-src 'self' niimstudio: data:; connect-src 'self' niimstudio: data: blob: https://api.labelary.com; "
+                    "worker-src 'self' niimstudio: blob:; object-src 'none'; frame-src 'none'; base-uri 'none'"
+                ),
+            )
+            headers.append("X-Content-Type-Options", "nosniff")
+            response.set_http_headers(headers)
+            request.finish_with_response(response)
+        except (OSError, ValueError) as error:
+            LOG.warning("Cannot serve bundled asset: %s", error)
+            request.finish_error(
+                GLib.Error.new_literal(Gio.io_error_quark(), "Asset not found", Gio.IOErrorEnum.NOT_FOUND)
+            )
+
+    def decide_policy(self, _view, decision, kind):
+        if kind in (WebKit.PolicyDecisionType.NAVIGATION_ACTION, WebKit.PolicyDecisionType.NEW_WINDOW_ACTION):
+            uri = decision.get_navigation_action().get_request().get_uri()
+            if uri.startswith(ORIGIN) and kind != WebKit.PolicyDecisionType.NEW_WINDOW_ACTION:
+                decision.use()
+            else:
+                decision.ignore()
+                # External content is never loaded into a privileged editor view.
+                if uri.startswith("https://"):
+                    dialog = Adw.AlertDialog(heading="Open external link?", body=uri)
+                    dialog.add_response("cancel", "Cancel")
+                    dialog.add_response("open", "Open in browser")
+                    dialog.set_close_response("cancel")
+                    dialog.connect(
+                        "response",
+                        lambda _d, response: (
+                            Gio.AppInfo.launch_default_for_uri(uri, None) if response == "open" else None
+                        ),
+                    )
+                    dialog.present(self.window)
+            return True
+        return False
+
+    def evaluate(self, script):
+        if not self.shutting_down:
+            self.webview.evaluate_javascript(script, -1, None, ORIGIN, None, None, None)
+
+    def send(self, message):
+        self.evaluate(f"window.__niimstudioReceive?.({json.dumps(message, ensure_ascii=True)});")
+
+    def reply(self, request_id, value=None, error=None, cancelled=False):
+        self.send({"id": request_id, "value": value, "error": str(error) if error else None, "cancelled": cancelled})
+
+    def on_message(self, _manager, value):
+        try:
+            raw = value.to_json(0)
+            if len(raw) > 90 * 1024 * 1024:
+                raise ValueError("Bridge message is too large")
+            request = validate_message(json.loads(raw))
+        except (ValueError, TypeError, AttributeError) as error:
+            LOG.warning("Rejected bridge message: %s", error)
+            return
+        request_id, operation = request["id"], request["op"]
+        try:
+            if self.smoke and operation in {"write", "remember"}:
+                raise RuntimeError("Hardware access is disabled in smoke tests")
+            if operation.startswith("test") and not self.smoke:
+                raise RuntimeError("Test operations are unavailable in a normal workspace")
+            if operation == "ready":
+                self.editor_ready = True
+                families = sorted(
+                    family.get_name() for family in self.window.get_pango_context().get_font_map().list_families()
+                )
+                self.reply(request_id, {"palette": self.palette, "version": __version__, "fontFamilies": families})
+                if self.smoke:
+                    self.smoke_test()
+            elif operation == "connect":
+                self.choose_printer(request_id, automatic=request.get("automatic") is True)
+            elif operation == "knownDevice":
+                self.reply(request_id, self.history.info())
+            elif operation == "testDismissDevices":
+                opened = self.chooser is not None
+                if opened:
+                    self.chooser.close()
+                self.reply(request_id, opened)
+            elif operation == "testSnapshot":
+                self.capture_test_view(request_id, request.get("name"))
+            elif operation == "remember":
+                if self.transport is None or self.selected_device is None or self.connecting:
+                    raise ConnectionError("No successfully opened printer to remember")
+                self.history.remember(self.selected_device)
+                self.reply(request_id)
+            elif operation == "disconnect":
+                self.disconnect_transport(request_id)
+            elif operation == "write":
+                data = request.get("data")
+                if (
+                    not isinstance(data, list)
+                    or not 0 < len(data) <= 65536
+                    or any(type(b) is not int or not 0 <= b <= 255 for b in data)
+                ):
+                    raise ValueError("Invalid transport bytes")
+                transport = self.transport
+                if transport is None:
+                    raise ConnectionError("Printer is disconnected")
+                self.run_task(
+                    lambda: transport.write(bytes(data)),
+                    lambda _r: self.reply(request_id),
+                    lambda error: self.reply(request_id, error=error),
+                )
+            elif operation == "save":
+                self.save_file(request_id, request)
+            elif operation == "status":
+                self.printing = request.get("printing") is True
+                self.reply(request_id)
+            elif operation == "log":
+                LOG.info("Editor: %s", str(request.get("message", ""))[:4000])
+                self.reply(request_id)
+        except Exception as error:
+            self.reply(request_id, error=error)
+
+    def choose_printer(self, request_id, automatic=False):
+        if self.smoke and automatic:
+            self.reply(request_id, error="Automatic printer connections are disabled in smoke tests")
+            return
+        if self.connecting or self.chooser or self.transport:
+            self.reply(request_id, error="A printer connection is already active or in progress")
+            return
+        self.connecting = True
+
+        def canceled():
+            self.connecting = False
+            self.chooser = None
+            self.reply(request_id, cancelled=True)
+
+        def selected(device):
+            if self.smoke:
+                self.reply(request_id, error="Hardware access is disabled in smoke tests")
+                self.connecting = False
+                return
+            self.chooser = None
+            self.generation += 1
+            generation = self.generation
+
+            def data_received(data):
+                GLib.idle_add(self.transport_event, generation, {"event": "data", "data": list(data)})
+
+            def disconnected(reason):
+                GLib.idle_add(self.transport_event, generation, {"event": "disconnect", "reason": reason})
+
+            transport = (
+                SerialTransport(data_received, disconnected)
+                if device["kind"] == "serial"
+                else BluetoothTransport(self.bluez, data_received, disconnected)
+            )
+            self.transport = transport
+            self.selected_device = device
+
+            def opened(_value):
+                self.connecting = False
+                self.reply(request_id, {"name": device["name"], "kind": device["kind"]})
+
+            def failed(error):
+                self.connecting = False
+                self.transport = None
+                self.run_task(transport.close)
+                if isinstance(error, PermissionError):
+                    error = RuntimeError(
+                        "USB permission denied. See docs/HARDWARE.md for per-device udev access; do not run NiimStudio as root."
+                    )
+                self.reply(request_id, error=error)
+
+            self.run_task(lambda: transport.open(device["id"]), opened, failed)
+
+        if automatic:
+
+            def resolve():
+                objects = self.bluez.objects() if self.bluez else {}
+                return self.history.resolve_last(discover_serial(), objects)
+
+            def unavailable(error):
+                self.connecting = False
+                self.reply(request_id, error=error)
+
+            self.run_task(resolve, selected, unavailable)
+        else:
+            self.chooser = DeviceChooser(
+                self.window,
+                self.bluez,
+                self.run_task,
+                selected,
+                canceled,
+                history=self.history,
+                policy_changed=lambda enabled: self.send({"event": "reconnect-policy", "enabled": enabled}),
+                hardware_enabled=not self.smoke,
+            )
+            self.chooser.present()
+
+    def transport_event(self, generation, event):
+        if generation == self.generation and self.transport and not self.shutting_down:
+            if event["event"] == "disconnect":
+                transport, self.transport = self.transport, None
+                self.run_task(transport.close)
+            self.send(event)
+        return GLib.SOURCE_REMOVE
+
+    def disconnect_transport(self, request_id):
+        transport, self.transport = self.transport, None
+        self.generation += 1
+        if transport:
+            self.run_task(
+                transport.close, lambda _r: self.reply(request_id), lambda error: self.reply(request_id, error=error)
+            )
+        else:
+            self.reply(request_id)
+
+    def save_file(self, request_id, request):
+        encoded = request.get("base64")
+        if not isinstance(encoded, str) or len(encoded) > 85 * 1024 * 1024:
+            raise ValueError("Export exceeds 64 MiB")
+        content = base64.b64decode(encoded, validate=True)
+        filename = Path(str(request.get("filename", "label.json"))).name or "label.json"
+        dialog = Gtk.FileDialog(title="Export label", initial_name=filename)
+
+        def chosen(dialog, result):
+            try:
+                file = dialog.save_finish(result)
+            except GLib.Error:
+                self.reply(request_id, False)
+                return
+            self.run_task(
+                lambda: file.replace_contents(content, None, False, Gio.FileCreateFlags.PRIVATE, None),
+                lambda _r: self.reply(request_id, True),
+                lambda error: self.reply(request_id, error=error),
+            )
+
+        dialog.save(self.window, None, chosen)
+
+    def sync_theme(self):
+        manager = Adw.StyleManager.get_default()
+        palette = None if os.environ.get("NIIMSTUDIO_THEME") == "gtk" else read_palette(fallback=False)
+        source = "omarchy" if palette is not None else "gtk"
+        if source == "gtk":
+            if self.theme_source != "gtk":
+                self.css.load_from_string("")
+                manager.set_color_scheme(Adw.ColorScheme.DEFAULT)
+            palette = gtk_palette(self.window.get_style_context().lookup_color, manager.get_dark())
+        signature = json.dumps((source, palette), sort_keys=True)
+        if signature != self.theme_signature:
+            if source == "omarchy":
+                self.css.load_from_string(gtk_css(palette))
+                manager.set_color_scheme(
+                    Adw.ColorScheme.FORCE_LIGHT if palette["mode"] == "light" else Adw.ColorScheme.FORCE_DARK
+                )
+            self.palette = palette
+            self.theme_source = source
+            self.theme_signature = signature
+            self.webview.set_background_color(self.background_color(palette["background"]))
+            self.send({"event": "theme", "palette": palette})
+        return GLib.SOURCE_CONTINUE
+
+    @staticmethod
+    def background_color(color):
+        rgba = Gdk.RGBA()
+        rgba.parse(color)
+        return rgba
+
+    def about(self, _button):
+        dialog = Adw.AboutDialog(
+            application_name="NiimStudio",
+            application_icon="printer-symbolic",
+            version=__version__,
+            developer_name="NiimStudio contributors",
+            license_type=Gtk.License.MIT_X11,
+            comments="A local-first NIIMBOT label workspace, made for Omarchy and other Linux desktops.\nPrinter communication is powered by NiimBlueLib. The label engine is based on MultiMote’s NiimBlue.\nNot affiliated with NIIMBOT.",
+            website="https://github.com/Akuyumu/niimstudio",
+        )
+        dialog.add_credit_section(
+            "Open-source foundations",
+            ["MultiMote — NiimBlue and NiimBlueLib (MIT)", "Fabric.js, Svelte, GTK and WebKitGTK"],
+        )
+        dialog.present(self.window)
+
+    def confirm_close(self, _window):
+        if self.smoke:
+            return False
+        dialog = Adw.AlertDialog(
+            heading="Close the label workspace?",
+            body=(
+                "A print job is in progress. Closing disconnects the printer and may leave a partial label."
+                if getattr(self, "printing", False)
+                else "Your draft is saved automatically. Save important labels to your library or export them before closing."
+            ),
+        )
+        dialog.add_response("cancel", "Keep editing")
+        dialog.add_response("close", "Close")
+        dialog.set_close_response("cancel")
+        dialog.connect("response", lambda _d, response: self.quit() if response == "close" else None)
+        dialog.present(self.window)
+        return True
+
+    def load_failed(self, _view, _event, uri, error):
+        LOG.error("Editor failed to load %s: %s", uri, error)
+        return False
+
+    def process_terminated(self, _view, reason):
+        LOG.error("Embedded editor terminated: %s", reason)
+        if self.smoke:
+            self.smoke_failed = True
+            self.quit()
+            return
+        dialog = Adw.AlertDialog(
+            heading="The label editor stopped",
+            body="Reopen NiimStudio. Your last autosaved draft and saved labels remain on this device.",
+        )
+        dialog.add_response("close", "Close")
+        dialog.connect("response", lambda _d, _r: self.quit())
+        dialog.present(self.window)
+
+    def smoke_test(self):
+        # Run after Svelte's onMount, then exercise the real embedded editor.
+        GLib.timeout_add_seconds(2, self.finish_smoke)
+
+    def capture_test_view(self, request_id, name):
+        allowed = {"editor", "templates", "qr-dialog", "barcode-dialog", "print-preview"}
+        directory = os.environ.get("NIIMSTUDIO_TEST_ARTIFACTS")
+        if name not in allowed or not directory:
+            self.reply(request_id, False)
+            return
+        target = Path(directory)
+        target.mkdir(parents=True, exist_ok=True)
+
+        def captured(view, result):
+            try:
+                texture = view.get_snapshot_finish(result)
+                texture.save_to_png(str(target / f"{name}.png"))
+                self.reply(request_id, True)
+            except GLib.Error as error:
+                self.reply(request_id, error=error)
+
+        def settled_capture():
+            self.webview.get_snapshot(WebKit.SnapshotRegion.FULL_DOCUMENT, WebKit.SnapshotOptions.NONE, None, captured)
+            return GLib.SOURCE_REMOVE
+
+        GLib.timeout_add(250, settled_capture)
+
+    def finish_smoke(self):
+        script = """(async () => {
+          const test = await window.__niimstudioSmokeTest();
+          return JSON.stringify(test);
+        })()"""
+
+        def finished(view, result):
+            try:
+                value = view.call_async_javascript_function_finish(result)
+                result = json.loads(value.to_string())
+                artifacts = result.pop("artifacts", {})
+                directory = os.environ.get("NIIMSTUDIO_TEST_ARTIFACTS")
+                if directory:
+                    target = Path(directory)
+                    target.mkdir(parents=True, exist_ok=True)
+                    for name in ("qr-url.png", "barcode-url.png", "barcode-special.png", "ean13.png"):
+                        if name in artifacts:
+                            (target / name).write_bytes(
+                                base64.b64decode(artifacts[name].split(",", 1)[1], validate=True)
+                            )
+                print("SMOKE_RESULT=" + json.dumps(result), flush=True)
+                self.smoke_failed = result.get("ok") is not True
+                chooser = DeviceChooser(
+                    self.window,
+                    self.bluez,
+                    self.run_task,
+                    lambda _d: None,
+                    lambda: None,
+                    history=self.history,
+                    hardware_enabled=False,
+                )
+                chooser.present()
+                chooser.close()
+                print("SMOKE_DEVICE_CHOOSER=ok", flush=True)
+            except Exception as error:
+                print("SMOKE_ERROR=" + str(error), flush=True)
+                self.smoke_failed = True
+            self.quit()
+
+        def run():
+            self.webview.call_async_javascript_function(
+                "return await " + script, -1, None, None, ORIGIN, None, finished
+            )
+
+        snapshot_path = os.environ.get("NIIMSTUDIO_SNAPSHOT")
+        if snapshot_path:
+
+            def snapshot_finished(view, result):
+                try:
+                    Path(snapshot_path).parent.mkdir(parents=True, exist_ok=True)
+                    texture = view.get_snapshot_finish(result)
+                    texture.save_to_png(snapshot_path)
+                except GLib.Error as error:
+                    LOG.warning("Snapshot failed: %s", error)
+                run()
+
+            self.webview.get_snapshot(
+                WebKit.SnapshotRegion.FULL_DOCUMENT, WebKit.SnapshotOptions.NONE, None, snapshot_finished
+            )
+        else:
+            run()
+        return GLib.SOURCE_REMOVE
+
+    def smoke_timeout(self):
+        if not self.shutting_down:
+            print("SMOKE_ERROR=Editor did not become ready", flush=True)
+            self.smoke_failed = True
+            self.quit()
+        return GLib.SOURCE_REMOVE
+
+    def shutdown_app(self, _app):
+        self.shutting_down = True
+        if self.chooser:
+            self.chooser._cleanup()
+        if self.transport:
+            self.executor.submit(self.transport.close)
+        self.executor.shutdown(wait=False, cancel_futures=False)
+
+
+def main():
+    if Gtk.get_major_version() < 4 or (Gtk.get_major_version() == 4 and Gtk.get_minor_version() < 12):
+        print("NiimStudio requires GTK 4.12 or newer.", file=sys.stderr)
+        return 2
+    if Adw.get_major_version() == 1 and Adw.get_minor_version() < 5:
+        print("NiimStudio requires Libadwaita 1.5 or newer.", file=sys.stderr)
+        return 2
+    logging.basicConfig(
+        level=logging.DEBUG if os.environ.get("NIIMSTUDIO_DEBUG") else logging.INFO,
+        format="%(levelname)s %(name)s: %(message)s",
+    )
+    smoke = "--smoke-test" in sys.argv
+    app = StudioApplication(smoke=smoke)
+    result = app.run([sys.argv[0]])
+    return 1 if smoke and getattr(app, "smoke_failed", True) else result

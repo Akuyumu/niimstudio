@@ -1,0 +1,18 @@
+#!/usr/bin/env python3
+"""Verify actual process-to-process draft/template persistence with private data."""
+
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+
+root = Path(__file__).resolve().parents[1]
+with tempfile.TemporaryDirectory(prefix="niimstudio-restart-") as profile:
+    environment = os.environ.copy()
+    environment["NIIMSTUDIO_TEST_PROFILE"] = profile
+    for key in ("NIIMSTUDIO_DEMO", "NIIMSTUDIO_RESTART_VERIFY", "NIIMSTUDIO_SNAPSHOT", "NIIMSTUDIO_TEST_ARTIFACTS"):
+        environment.pop(key, None)
+    subprocess.run([str(root / "scripts/niimstudio"), "--smoke-test"], env=environment, check=True)
+    environment["NIIMSTUDIO_RESTART_VERIFY"] = "1"
+    subprocess.run([str(root / "scripts/niimstudio"), "--smoke-test"], env=environment, check=True)
+print("PASS process restart: draft objects, QR quiet zone, barcode content and named template restored")

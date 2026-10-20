@@ -138,40 +138,44 @@ export class LocalStoragePersistence {
   } {
     const zodErrors: z.ZodError[] = [];
     const otherErrors: Error[] = [];
-
-    Object.keys(localStorage).forEach((key) => {
-      if (key.startsWith("saved_label")) {
-        localStorage.removeItem(key);
-      }
-    });
-
+    const prepared = new Map<string, string>();
+    const normalized: ExportedLabelTemplate[] = [];
+    // Validate and serialize everything before touching the existing library.
     labels.forEach((label) => {
       try {
-        if (label.timestamp === undefined) {
-          label.timestamp = FileUtils.timestamp();
-        }
-
-        const basename = `saved_label_${label.timestamp}`;
+        const parsed = ExportedLabelTemplateSchema.omit({ id: true }).parse({
+          ...label, timestamp: label.timestamp ?? FileUtils.timestamp(),
+        });
+        const basename = `saved_label_${parsed.timestamp}`;
         let counter = 0;
-
-        while (`${basename}_${counter}` in localStorage) {
-          counter++;
-        }
-
-        this.validateAndSaveObject(
-          this.createUidForLabel(label),
-          label,
-          ExportedLabelTemplateSchema.omit({ id: true }),
-        );
+        while (prepared.has(`${basename}_${counter}`)) counter++;
+        const key = `${basename}_${counter}`;
+        prepared.set(key, JSON.stringify(parsed));
+        normalized.push({ ...parsed, id: key });
       } catch (e) {
-        if (e instanceof z.ZodError) {
-          zodErrors.push(e);
-        }
-        if (e instanceof Error) {
-          otherErrors.push(e);
-        }
+        if (e instanceof z.ZodError) zodErrors.push(e);
+        else if (e instanceof Error) otherErrors.push(e);
       }
     });
+    if (zodErrors.length || otherErrors.length) return { zodErrors, otherErrors };
+
+    const existing = new Map(Object.keys(localStorage)
+      .filter((key) => key.startsWith("saved_label"))
+      .map((key) => [key, localStorage.getItem(key)!]));
+    try {
+      existing.forEach((_value, key) => localStorage.removeItem(key));
+      prepared.forEach((value, key) => localStorage.setItem(key, value));
+      labels.forEach((label, index) => Object.assign(label, normalized[index]));
+    } catch (e) {
+      // A full WebKit storage quota must not silently erase saved labels.
+      prepared.forEach((_value, key) => localStorage.removeItem(key));
+      try {
+        existing.forEach((value, key) => localStorage.setItem(key, value));
+      } catch (restoreError) {
+        if (restoreError instanceof Error) otherErrors.push(restoreError);
+      }
+      if (e instanceof Error) otherErrors.push(e);
+    }
     return { zodErrors, otherErrors };
   }
 

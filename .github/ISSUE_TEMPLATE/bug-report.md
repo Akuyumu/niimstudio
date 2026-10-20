@@ -10,7 +10,7 @@ assignees: ''
 ### Printer info
 
 <details>
-<summary>info from niimbue</summary>
+<summary>NiimStudio printer information</summary>
 
 ```
 *contents of "gear" menu near printer connector*
@@ -23,9 +23,16 @@ assignees: ''
 ? Bluetooth (what adapter are you using?)
 ? Serial (USB)
 
-### Browser console logs
+### Linux desktop and app version
 
-*press F12 and copy "Console" tab contents*
+Distribution, GTK/Libadwaita versions if known, app commit/version, Omarchy theme
+or system GTK appearance. Say whether this also reproduces in upstream NiimBlue.
+
+### Logs
+
+Run `NIIMSTUDIO_DEBUG=1 ./scripts/niimstudio`. Redact personal labels, Bluetooth
+addresses and other sensitive data before sharing logs. Never attach a real
+private label simply to demonstrate a layout problem; make a synthetic example.
 
 <details>
 <summary>logs</summary>
