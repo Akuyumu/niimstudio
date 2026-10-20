@@ -117,7 +117,7 @@ export async function runStockSmoke(context: {
   const corner = preview.getContext("2d")!.getImageData(0, 0, 1, 1).data;
   const previewRoundingIsVisualOnly = corner[0] === 255 && corner[1] === 255 && corner[2] === 255 && corner[3] === 255;
   await click(".modal.show .btn-close");
-  await waitFor(() => !document.querySelector(".modal"), "closed print preview");
+  await waitFor(() => !document.querySelector(".modal.show"), "closed print preview");
   await click('[data-action="label-stock"]');
   await settle();
   await click('[data-action="use-detected-stock"]');
@@ -134,7 +134,7 @@ export async function runStockSmoke(context: {
   rfidInfo.set({});
   await settle();
   await click(".modal.show .btn-close");
-  await waitFor(() => !document.querySelector(".modal"), "closed stock picker");
+  await waitFor(() => !document.querySelector(".modal.show"), "closed stock picker");
   context.openPreview();
   await settle();
   await click('[data-action="print-label"]');
@@ -142,7 +142,7 @@ export async function runStockSmoke(context: {
   const unknownStockCannotPrint =
     document.querySelector(".modal.show .alert-danger")?.textContent?.includes("Choose the stock loaded") === true;
   await click(".modal.show .btn-close");
-  await waitFor(() => !document.querySelector(".modal"), "closed final preview");
+  await waitFor(() => !document.querySelector(".modal.show"), "closed final preview");
 
   connectionState.set("disconnected");
   printerMeta.set(previous.meta);

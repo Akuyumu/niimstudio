@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+"""Ensure an edit closed before the debounce deadline survives a real restart."""
+
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+
+root = Path(__file__).resolve().parents[1]
+with tempfile.TemporaryDirectory(prefix="niimstudio-close-") as profile:
+    environment = {**os.environ, "NIIMSTUDIO_TEST_PROFILE": profile, "NIIMSTUDIO_LIFECYCLE_BENCHMARK": "1"}
+    for mode in ("write", "verify"):
+        environment["NIIMSTUDIO_LIFECYCLE_MODE"] = mode
+        subprocess.run([str(root / "scripts/niimstudio"), "--smoke-test"], env=environment, check=True, timeout=90)
+print("PASS immediate close: pending edit flushed and restored in a new process")

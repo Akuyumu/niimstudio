@@ -6,10 +6,11 @@ type NativeMessage = {
   value?: unknown;
   error?: string;
   cancelled?: boolean;
-  event?: "data" | "disconnect" | "theme" | "reconnect-policy";
+  event?: "data" | "disconnect" | "theme" | "reconnect-policy" | "fonts";
   enabled?: boolean;
   data?: number[];
   palette?: Palette;
+  families?: string[];
   reason?: string;
 };
 
@@ -19,6 +20,9 @@ declare global {
     __NIIMSTUDIO_SMOKE__?: boolean;
     __NIIMSTUDIO_DEMO__?: boolean;
     __NIIMSTUDIO_RESTART_VERIFY__?: boolean;
+    __NIIMSTUDIO_BENCHMARK__?: boolean;
+    __NIIMSTUDIO_LIFECYCLE_MODE__?: string;
+    __niimstudioPrepareClose?: () => boolean;
     __niimstudioReceive?: (message: NativeMessage) => void;
     __niimstudioSmokeTest?: () => Promise<Record<string, unknown>>;
     webkit?: { messageHandlers: { studio: { postMessage: (message: unknown) => void } } };
@@ -103,7 +107,6 @@ export function applyPalette(palette: Palette) {
 export async function initializeDesktop() {
   if (!isNative) return;
   document.documentElement.classList.add("studio-native");
-  const { palette, fontFamilies } = await nativeRequest<{ palette: Palette; fontFamilies: string[] }>("ready");
+  const { palette } = await nativeRequest<{ palette: Palette }>("ready");
   applyPalette(palette);
-  return fontFamilies;
 }

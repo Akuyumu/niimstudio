@@ -3,6 +3,7 @@
   import { connectionState, printerInfo, printerMeta, rfidInfo, printerClient, confirmedStock } from "$/stores";
   import type { LabelProps } from "$/types";
   import AppModal from "$/components/basic/AppModal.svelte";
+  import { isNative } from "$/desktop/bridge";
   import MdIcon from "$/components/basic/MdIcon.svelte";
   import {
     detectedStock,
@@ -26,6 +27,7 @@
     blocked?: boolean;
   } = $props();
   let shown = $state(false);
+  let retained = $state(false);
   let modal = $state<AppModal>();
   let handled = "";
   let applied = $state("");
@@ -78,6 +80,9 @@
     }
   };
   $effect(() => {
+    if (shown && isNative) retained = true;
+  });
+  $effect(() => {
     const state = $connectionState;
     const reported = proposed;
     const busy = blocked;
@@ -116,7 +121,7 @@
   {:else}Label stock{/if}
 </button>
 
-{#if shown}
+{#if shown || retained}
   <AppModal
     title={detected ? "Detected label stock" : proposed ? "Use this printer's resolution?" : "Choose your label stock"}
     bind:show={shown}

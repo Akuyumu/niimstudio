@@ -38,7 +38,7 @@
   import { CustomCanvas } from "$/fabric-object/custom_canvas";
   import VectorParamsControls from "$/components/designer-controls/VectorParamsControls.svelte";
   import { CanvasUtils } from "$/utils/canvas_utils";
-  import { isNative } from "$/desktop/bridge";
+  import { isNative, nativeRequest } from "$/desktop/bridge";
   import { ExportedLabelTemplateSchema } from "$/types";
   import SelectionToolbar from "$/desktop/SelectionToolbar.svelte";
   import CodeEditor, { type CodeContent } from "$/desktop/CodeEditor.svelte";
@@ -68,13 +68,18 @@
   let codeEditor = $state<{ kind: "qrcode" | "barcode"; existing?: QRCode | Barcode }>();
 
   const saveDraft = () => {
-    if (!isNative || !draftReady || !fabricCanvas) return;
+    if (!isNative || !draftReady || !fabricCanvas) return false;
+    clearTimeout(draftTimer);
     try {
-      LocalStoragePersistence.validateAndSaveObject("studio_draft", exportCurrentLabel(), ExportedLabelTemplateSchema);
+      // Draft restoration needs the editable data, not an encoded preview image.
+      const draft = FileUtils.makeExportedLabel(fabricCanvas, labelProps, csvEnabled, false);
+      LocalStoragePersistence.validateAndSaveObject("studio_draft", draft, ExportedLabelTemplateSchema);
       draftState = "Draft saved locally";
+      return true;
     } catch (error) {
       draftState = "Draft not saved — export your work";
       console.error(error);
+      return false;
     }
   };
 
@@ -425,6 +430,7 @@
   };
 
   onMount(async () => {
+    const mountedAt = performance.now();
     try {
       const savedLabelProps = LocalStoragePersistence.loadLastLabelProps();
       if (savedLabelProps !== null) {
@@ -472,6 +478,7 @@
     }
     if (isNative) fabricCanvas.virtualZoom(2);
     draftReady = true;
+    if (isNative) window.__niimstudioPrepareClose = saveDraft;
     window.addEventListener("beforeunload", saveDraft);
 
     window.addEventListener("hashchange", loadLabelFromUrl);
@@ -580,7 +587,41 @@
       }
     }
 
+    if (isNative) {
+      const canvasReadyAt = performance.now();
+      await tick();
+      await document.fonts.ready;
+      const fontsReadyAt = performance.now();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      let verified = true;
+      if (window.__NIIMSTUDIO_LIFECYCLE_MODE__ === "write") {
+        const object = fabricCanvas.getObjects().find((item) => item instanceof fabric.IText) as fabric.IText;
+        object.set("text", "Immediate-close persistence fixture");
+        undo.push(fabricCanvas, labelProps); // Deliberately leave the 500ms autosave pending.
+      } else if (window.__NIIMSTUDIO_LIFECYCLE_MODE__ === "verify") {
+        verified = fabricCanvas
+          .getObjects()
+          .some((item) => item instanceof fabric.IText && item.text === "Immediate-close persistence fixture");
+      }
+      const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+      await nativeRequest("workspaceReady", {
+        verified,
+        timings: {
+          documentReady: navigation?.domContentLoadedEventEnd ?? 0,
+          mountedAt,
+          canvasReadyAt,
+          fontsReadyAt,
+          paintedAt: performance.now(),
+        },
+      });
+    }
+
     if (window.__NIIMSTUDIO_SMOKE__) {
+      if (window.__NIIMSTUDIO_BENCHMARK__) {
+        const { benchmarkOverlays } = await import("$/desktop/benchmark_overlays");
+        window.__niimstudioSmokeTest = () => benchmarkOverlays(exportCurrentLabel());
+        return;
+      }
       if (window.__NIIMSTUDIO_RESTART_VERIFY__) {
         window.__niimstudioSmokeTest = async () => {
           const objects = fabricCanvas!.getObjects();
@@ -626,6 +667,7 @@
     saveDraft();
     window.removeEventListener("beforeunload", saveDraft);
     delete window.__niimstudioSmokeTest;
+    delete window.__niimstudioPrepareClose;
     fabricCanvas!.dispose();
     window.removeEventListener("hashchange", loadLabelFromUrl);
   });
@@ -801,7 +843,7 @@
       </div>
       <IconPicker onSubmit={onIconPicked} onSubmitSvg={onSvgIconPicked} label="Icons" />
       <CsvControl bind:enabled={csvEnabled} onPlaceholderPicked={onCsvPlaceholderPicked} label="Data" />
-      <ObjectPicker onSubmit={onObjectPicked} {labelProps} {zplImageReady} {pdfImageReady} label="More" />
+      <ObjectPicker onSubmit={onObjectPicked} {labelProps} {zplImageReady} {pdfImageReady} label="More" advancedOnly />
       <div class="dropdown studio-document-menu">
         <button class="btn studio-insert-button" title="Document options" data-bs-toggle="dropdown"
           ><MdIcon icon="tune" /><span>Document</span></button>

@@ -11,6 +11,8 @@ import { runCodeSmoke } from "$/desktop/smoke_codes";
 import { get } from "svelte/store";
 import { connectionState } from "$/stores";
 import { runStockSmoke } from "$/desktop/smoke_stock";
+import { runOverlaySmoke } from "$/desktop/smoke_overlays";
+import { runLibraryCacheSmoke } from "$/desktop/smoke_library_cache";
 
 export async function runEditorSmoke(context: {
   canvas: CustomCanvas;
@@ -22,8 +24,17 @@ export async function runEditorSmoke(context: {
   saveDraft: () => void;
   openPreview: () => void;
 }) {
+  const runtimeErrors: string[] = [];
+  const onError = (event: ErrorEvent) => runtimeErrors.push(event.message);
+  const onRejected = (event: PromiseRejectionEvent) => runtimeErrors.push(String(event.reason));
+  window.addEventListener("error", onError);
+  window.addEventListener("unhandledrejection", onRejected);
   const { canvas, labelProps, undo } = context;
   const showcase = { ...context.exportLabel(), title: window.__NIIMSTUDIO_DEMO__ ? "Coffee beans" : "Example label" };
+  const { overlayFrames, ...overlayResults } = await runOverlaySmoke();
+  const overlaysWork = Object.values(overlayResults).every(Boolean);
+  const cacheResults = await runLibraryCacheSmoke(showcase);
+  const cacheWorks = Object.values(cacheResults).every(Boolean);
   const stockResults = await runStockSmoke(context);
   const stockSetupWorks = Object.values(stockResults).every(Boolean);
   await context.loadLabel({ ...showcase, label: { ...showcase.label, shape: "rect" } });
@@ -139,6 +150,8 @@ export async function runEditorSmoke(context: {
   await new Promise((resolve) => setTimeout(resolve, 1200));
   const preview = document.querySelector<HTMLCanvasElement>(".modal canvas");
   await nativeRequest("testSnapshot", { name: "print-preview" });
+  window.removeEventListener("error", onError);
+  window.removeEventListener("unhandledrejection", onRejected);
   return {
     ok:
       before === 8 &&
@@ -155,7 +168,10 @@ export async function runEditorSmoke(context: {
       codesWork &&
       deviceCancellationSilent &&
       stockShapesCorrect &&
-      stockSetupWorks,
+      stockSetupWorks &&
+      overlaysWork &&
+      cacheWorks &&
+      runtimeErrors.length === 0,
     objects: before,
     afterUndo,
     afterRedo,
@@ -173,6 +189,10 @@ export async function runEditorSmoke(context: {
     deviceCancellationSilent,
     stockShapesCorrect,
     ...stockResults,
+    ...overlayResults,
+    ...cacheResults,
+    runtimeErrors,
+    overlayFrames: overlaysWork ? undefined : overlayFrames,
     artifacts,
   };
 }

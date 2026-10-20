@@ -1,4 +1,4 @@
-# Installing NiimStudio v0.1.0
+# Installing NiimStudio v0.1.1
 
 ## One command
 
@@ -46,9 +46,9 @@ its disposable test VMs so it can exercise the real sandboxed app.
 This executes project code you choose to trust. For an inspect-before-running flow:
 
 ```bash
-curl -fsSLo niimstudio-install.sh https://raw.githubusercontent.com/Akuyumu/niimstudio/v0.1.0/install.sh
+curl -fsSLo niimstudio-install.sh https://raw.githubusercontent.com/Akuyumu/niimstudio/v0.1.1/install.sh
 less niimstudio-install.sh
-bash niimstudio-install.sh --version v0.1.0
+bash niimstudio-install.sh --version v0.1.1
 ```
 
 ```bash
@@ -128,6 +128,28 @@ checkouts, and leaves system dependencies installed. Unrelated launcher/menu/ico
 files are not overwritten. If a source-checkout launcher exists, `--replace-source`
 explicitly replaces **only its integration**, preserving the checkout and labels.
 
+## Flickering or jitter on a particular graphics stack
+
+v0.1.1 removes native overlay slide/fade effects and the sidebar backdrop blur.
+If flickering persists, close **all** NiimStudio windows, then try one launch with
+WebKit hardware acceleration disabled:
+
+```bash
+# Native:
+~/.local/bin/niimstudio --software-rendering
+# Or Flatpak:
+flatpak run io.github.niimstudio.App --software-rendering
+```
+
+Equivalently, set `NIIMSTUDIO_RENDERER=software` for that process. A normal launch
+returns to the platform renderer. No preference, driver setting, compositor rule,
+or kernel configuration is changed; WebKit's sandbox remains enabled. Rendering
+may be slower in this mode. Printer encoding and saved label data are unchanged.
+The app is single-instance, so an already-running copy must be closed first.
+These are compatibility mitigations, not proof of the original device-specific
+cause; report whether normal or software mode still flickers, plus native/Flatpak
+and the desktop/GPU if known. A recording is not required.
+
 ## Switching formats / data
 
 The installer avoids creating conflicting native and Flatpak menu entries. Remove
@@ -139,7 +161,7 @@ Both uninstall methods keep user data by default. Back up important labels first
 
 ## Packaging references
 
-v0.1.0 ships the native `tar.gz`, x86-64/ARM64 `.flatpak` bundles, `install.sh`,
+v0.1.1 ships the native `tar.gz`, x86-64/ARM64 `.flatpak` bundles, `install.sh`,
 and `SHA256SUMS`. Neither format includes private labels or proprietary NIIMBOT
 assets; source/dependency licenses are retained. This is not an AppImage, `.deb`,
 `.rpm`, or AUR release. The small installer + release download approach was

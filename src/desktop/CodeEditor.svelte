@@ -172,7 +172,7 @@
     </div>
   </form>
   {#snippet footer()}
-    <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+    <button class="btn btn-secondary" onclick={() => modal.hide()}>Cancel</button>
     <button class="btn btn-primary" type="submit" form="studio-code-form" disabled={!!validation.error}
       >{existing ? "Apply changes" : kind === "qrcode" ? "Insert QR code" : "Insert barcode"}</button>
   {/snippet}

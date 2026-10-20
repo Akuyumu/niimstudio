@@ -28,7 +28,7 @@ desktop, not Omarchy's shell or window manager.
 
 ## Quick start
 
-Install **v0.1.0** with one command on a Linux desktop:
+Install **v0.1.1** with one command on a Linux desktop:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Akuyumu/niimstudio/main/install.sh | bash
@@ -135,6 +135,11 @@ flatpak uninstall --user io.github.niimstudio.App
 
 Both keep saved labels, drafts, and settings. Source checkouts and system
 dependencies are not deleted.
+
+If your graphics stack still flickers when opening panels, close the app and try
+`~/.local/bin/niimstudio --software-rendering` (native), or
+`flatpak run io.github.niimstudio.App --software-rendering` (Flatpak). This is a
+one-launch WebKit fallback, not a change to your desktop/driver settings.
 
 ## A few things to know
 

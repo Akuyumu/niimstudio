@@ -1,6 +1,8 @@
 <script lang="ts">
   import Modal from "bootstrap/js/dist/modal";
   import { onDestroy, onMount, type Snippet } from "svelte";
+  import { isNative } from "$/desktop/bridge";
+  import NativeModal from "$/desktop/NativeModal.svelte";
 
   interface Props {
     show: boolean;
@@ -14,8 +16,9 @@
 
   let { show = $bindable(), title, onClose, dismissible = true, wide = false, children, footer }: Props = $props();
 
-  let modalEl: HTMLElement;
+  let modalEl = $state<HTMLElement>(null!);
   let modal: Modal;
+  let nativeModal = $state<NativeModal>();
   let fullyShown = false;
   let fullyHidden = false;
   const onShown = () => {
@@ -38,12 +41,13 @@
   };
 
   onMount(() => {
+    if (isNative) return;
     modal = new Modal(modalEl);
-    modal.show();
-
     modalEl.addEventListener("hide.bs.modal", onHide);
     modalEl.addEventListener("shown.bs.modal", onShown);
     modalEl.addEventListener("hidden.bs.modal", onHidden);
+    // Subscribe before showing so immediate lifecycle events cannot be lost.
+    modal.show();
   });
 
   onDestroy(() => {
@@ -62,6 +66,10 @@
   });
 
   export const hide = () => {
+    if (isNative) {
+      nativeModal?.hide();
+      return;
+    }
     if (modal) {
       if (fullyShown) modal.hide();
       else modalEl.addEventListener("shown.bs.modal", () => modal.hide(), { once: true });
@@ -69,24 +77,28 @@
   };
 </script>
 
-<div bind:this={modalEl} class="modal fade" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered {wide ? 'modal-lg' : ''}">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h1 class="modal-title fs-5">{title}</h1>
-        <button aria-label="Dismiss" type="button" class="btn-close" disabled={!dismissible} data-bs-dismiss="modal"
-        ></button>
-      </div>
-
-      <div class="modal-body">
-        {@render children()}
-      </div>
-
-      {#if footer}
-        <div class="modal-footer">
-          {@render footer()}
+{#if isNative}
+  <NativeModal bind:show bind:this={nativeModal} {title} {onClose} {dismissible} {wide} {children} {footer} />
+{:else}
+  <div bind:this={modalEl} class="modal fade" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered {wide ? 'modal-lg' : ''}">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h1 class="modal-title fs-5">{title}</h1>
+          <button aria-label="Dismiss" type="button" class="btn-close" disabled={!dismissible} data-bs-dismiss="modal"
+          ></button>
         </div>
-      {/if}
+
+        <div class="modal-body">
+          {@render children()}
+        </div>
+
+        {#if footer}
+          <div class="modal-footer">
+            {@render footer()}
+          </div>
+        {/if}
+      </div>
     </div>
   </div>
-</div>
+{/if}

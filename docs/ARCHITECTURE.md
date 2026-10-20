@@ -22,6 +22,28 @@ handling. Saving uses a compact name dialog; it never requires a separate home
 dashboard. Advanced upstream controls remain available behind More properties.
 
 The header's left panel icon opens Templates; Save as template is explicit.
+The native More menu filters the shared tool registry to ArUco and the two import
+tools; exposed text/image/code/shape tools are not repeated. Native AppModal
+disables fades and subscribes before showing (immediate lifecycle events); the
+sidebar uses a plain dim layer without a blur/slide animation. Browser-reference
+modals keep their existing animation behavior. `--software-rendering` sets only
+the current process's WebKit acceleration policy; it is not persisted and never
+disables sandboxing. Overlay regression tests sample real editor/viewport geometry.
+
+Launch and quit are deliberately staged. `scripts/niimstudio` selects a system
+interpreter and delegates to `scripts/launch.py`, which chooses the system WebKit or
+the optional extracted runtime without importing GI on the launcher path. That
+runtime mounts a cached, signature-validated symlink view (`runtime_view.py`) into a
+private bwrap namespace; a lock keeps views used by another running instance and
+only two generated views are retained. The window is presented before the deferred
+navigation so the compositor can paint the themed shell while WebKit starts.
+`ready` returns the palette immediately; font enumeration arrives later as a
+`fonts` event. `close-request` flushes the draft through
+`window.__niimstudioPrepareClose` and destroys the window only after a successful
+save (2 s timeout, retry-safe); printing still requires confirmation. Sidebar
+validation is cached and invalidated by writes and cross-window storage events; the
+stock dialog is retained after first use. `scripts/benchmark-lifecycle` and
+`scripts/test-close` verify these paths with a synthetic profile.
 `CodeEditor.svelte` validates content and provides live QR/Code 128/EAN-13 previews
 before adding an object. Selected codes expose Edit content and double-click
 editing. New QR objects include a serialized four-module quiet zone; legacy QR

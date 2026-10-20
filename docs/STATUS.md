@@ -1,5 +1,24 @@
 # Status — 2026-10-20
 
+## v0.1.1 patch
+
+- Native overlays use no fade/slide or backdrop blur, avoiding unnecessary GPU
+  compositing during panel opening. Optional per-launch software rendering is
+  available without changing desktop settings or disabling the WebKit sandbox.
+- More contains only ArUco/ZPL/PDF; exposed toolbar tools are not duplicated.
+- Actual GPU-specific flicker was reported but could not be directly observed;
+  these compatibility mitigations still need confirmation on the affected device.
+- Obsolete drawer-animation CSS and repeated picker markup were removed; CI
+  actions use Node-24-compatible versions. Release contents remain allow-listed.
+- Startup/close work: the extracted runtime reuses a locked, signature-validated
+  library view; `scripts/launch.py` selects the interpreter/runtime without a
+  throwaway GI import; the themed window is presented before WebKit navigation;
+  fonts are enumerated after the first frame; template validation is cached; and
+  idle close flushes the draft and exits without a dialog. Warm medians on this
+  host: window 1285→645 ms, editor ready 1720→1140 ms, quit 207→67 ms.
+  Remaining launch time is GTK/GI import, WebKit process/page startup and the
+  first Fabric render; not hardware or cross-desktop guarantees.
+
 ## Implemented
 
 - Native GTK4/Libadwaita desktop app with bundled NiimBlue editor and no server.
@@ -29,7 +48,7 @@
 
 ## Automated verification
 
-- 42 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
+- 59 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
   fragmentation, service discovery, notifications, and cleanup; mocked pairing
   agents/prompts; palette safety/GTK compositing, bridge validation, and device history.
 - Installer tests cover checksum failure, traversal/links, update rollback,
@@ -57,6 +76,14 @@
 - The same GUI flows pass in Omarchy/Nord and forced system-GTK light mode;
   this tests the fallback on this host, not every Linux distribution's desktop.
 - Svelte/TypeScript checking, ESLint, production build, npm dependency audit.
+- Repeated sidebar/stock-dialog tests sample viewport and editor geometry during
+  opening/closing, check cleanup and absence of native blur/fades, and assert that
+  More exposes only advanced tools. Renderer-policy tests cover safe opt-in/default.
+- Real-process lifecycle checks cover immediate-close draft flush (before the
+  debounce deadline) and restore in a new process. Unit tests cover runtime-view
+  reuse/invalidation/pruning, close flush success, timeout and retry safety, and
+  the printing confirmation. `npm run benchmark:lifecycle` records opt-in local
+  markers without persistent telemetry or label content.
 
 ## Still needs real hardware / user acceptance
 

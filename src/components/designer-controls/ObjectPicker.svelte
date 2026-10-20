@@ -11,53 +11,42 @@
     zplImageReady: (img: Blob) => void;
     pdfImageReady: (img: HTMLCanvasElement) => void;
     label?: string;
+    advancedOnly?: boolean;
   }
 
-  let { onSubmit, labelProps, zplImageReady, pdfImageReady, label }: Props = $props();
+  let { onSubmit, labelProps, zplImageReady, pdfImageReady, label, advancedOnly = false }: Props = $props();
+  const objectTools = [
+    { type: "text", icon: "title", title: "editor.objectpicker.text" },
+    { type: "line", icon: "remove", title: "editor.objectpicker.line" },
+    { type: "rectangle", icon: "crop_square", title: "editor.objectpicker.rectangle" },
+    { type: "circle", icon: "radio_button_unchecked", title: "editor.objectpicker.circle" },
+    { type: "image", icon: "image", title: "editor.objectpicker.image" },
+    { type: "qrcode", icon: "qr_code_2", title: "editor.objectpicker.qrcode" },
+    { type: "aruco", icon: "grid_on", title: "editor.objectpicker.aruco" },
+    { type: "barcode", icon: "view_week", title: "editor.objectpicker.barcode" },
+  ] as const;
+  const tools = $derived(advancedOnly ? objectTools.filter((tool) => tool.type === "aruco") : objectTools);
 </script>
 
 <div class="dropdown">
-  <button class="btn btn-sm btn-secondary" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+  <button
+    class="btn btn-sm btn-secondary"
+    data-bs-toggle="dropdown"
+    data-bs-auto-close="outside"
+    data-action={advancedOnly ? "more-tools" : undefined}>
     <MdIcon icon={label ? "more_horiz" : "format_shapes"} />
     {#if label}<span>{label}</span>{:else}<MdIcon icon="add" />{/if}
   </button>
 
-  <div class="dropdown-menu">
-    <h6 class="dropdown-header">{$tr("editor.objectpicker.title")}</h6>
+  <div class="dropdown-menu" data-testid={advancedOnly ? "more-tools-menu" : undefined}>
+    <h6 class="dropdown-header">{advancedOnly ? "More tools" : $tr("editor.objectpicker.title")}</h6>
     <div class="p-3">
-      <button class="btn me-1" onclick={() => onSubmit("text")}>
-        <MdIcon icon="title" />
-        {$tr("editor.objectpicker.text")}
-      </button>
-      <button class="btn me-1" onclick={() => onSubmit("line")}>
-        <MdIcon icon="remove" />
-        {$tr("editor.objectpicker.line")}
-      </button>
-      <button class="btn me-1" onclick={() => onSubmit("rectangle")}>
-        <MdIcon icon="crop_square" />
-        {$tr("editor.objectpicker.rectangle")}
-      </button>
-      <button class="btn me-1" onclick={() => onSubmit("circle")}>
-        <MdIcon icon="radio_button_unchecked" />
-        {$tr("editor.objectpicker.circle")}
-      </button>
-
-      <button class="btn me-1" onclick={() => onSubmit("image")}>
-        <MdIcon icon="image" />
-        {$tr("editor.objectpicker.image")}
-      </button>
-      <button class="btn me-1" onclick={() => onSubmit("qrcode")}>
-        <MdIcon icon="qr_code_2" />
-        {$tr("editor.objectpicker.qrcode")}
-      </button>
-      <button class="btn me-1" onclick={() => onSubmit("aruco")}>
-        <MdIcon icon="grid_on" />
-        {$tr("editor.objectpicker.aruco")}
-      </button>
-      <button class="btn me-1" onclick={() => onSubmit("barcode")}>
-        <MdIcon icon="view_week" />
-        {$tr("editor.objectpicker.barcode")}
-      </button>
+      {#each tools as tool (tool.type)}
+        <button class="btn me-1" data-object-type={tool.type} onclick={() => onSubmit(tool.type)}>
+          <MdIcon icon={tool.icon} />
+          {$tr(tool.title)}
+        </button>
+      {/each}
 
       <ZplImportButton {labelProps} onImageReady={zplImageReady} />
 

@@ -8,33 +8,18 @@ to /usr, disable WebKit's sandbox, or require administrator privileges.
 import os
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
-
-def merge(host, overlay, destination, host_view, relative=Path()):
-    destination.mkdir()
-    installed = set(p.name for p in host.iterdir()) if host.is_dir() else set()
-    for name in sorted(installed | set(p.name for p in overlay.iterdir())):
-        original, addition, target = host / name, overlay / name, destination / name
-        if addition.is_dir() and not addition.is_symlink():
-            merge(original, addition, target, host_view, relative / name)
-        elif addition.exists() or addition.is_symlink():
-            target.symlink_to(Path("/usr/lib/.niimstudio-overlay") / relative / name)
-        else:
-            target.symlink_to(host_view / relative / name)
+from niimstudio.lifecycle import mark
+from niimstudio.runtime_view import HOST_VIEW, runtime_view
 
 
 def main():
+    mark("runtime_start")
     root = Path(__file__).resolve().parents[1]
     runtime = root / ".runtime"
-    with tempfile.TemporaryDirectory(prefix="view-", dir=runtime) as temporary:
-        view = Path(temporary)
-        merged = view / "lib"
-        host_view = Path("/usr/lib/.niimstudio-host")
-        merge(Path("/usr/lib"), runtime / "root/usr/lib", merged, host_view)
-        (merged / ".niimstudio-host").mkdir()
-        (merged / ".niimstudio-overlay").mkdir()
+    with runtime_view(runtime) as merged:
+        mark("runtime_view_ready")
         env = os.environ.copy()
         env["NIIMSTUDIO_LOCAL_RUNTIME"] = "1"
         env["LD_LIBRARY_PATH"] = "/usr/lib"
@@ -56,7 +41,7 @@ def main():
                 "--die-with-parent",
                 "--ro-bind",
                 "/usr/lib",
-                str(host_view),
+                str(HOST_VIEW),
                 "--ro-bind",
                 str(runtime / "root/usr/lib"),
                 "/usr/lib/.niimstudio-overlay",

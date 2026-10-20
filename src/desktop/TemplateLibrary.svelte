@@ -4,7 +4,7 @@
   import { ExportedLabelTemplateSchema, type ExportedLabelTemplate } from "$/types";
   import { FileUtils } from "$/utils/file_utils";
   import { LocalStoragePersistence } from "$/utils/persistence";
-  import type { Snippet } from "svelte";
+  import { onMount, type Snippet } from "svelte";
 
   let {
     exportLabel,
@@ -17,7 +17,7 @@
   } = $props();
   let shown = $state(false);
   let drawer: HTMLDialogElement;
-  let templates = $state<ExportedLabelTemplate[]>([]);
+  let templates = $state.raw<ExportedLabelTemplate[]>([]);
   let query = $state("");
   let title = $state("");
   let activeId = $state<string>();
@@ -25,13 +25,17 @@
   let pendingDelete = $state<string>();
   let error = $state("");
   let notice = $state("");
+  let cachedRevision = -1;
   const active = $derived(templates.find((item) => item.id === activeId));
   const filtered = $derived(
     templates.filter((item) => (item.title ?? "Untitled label").toLowerCase().includes(query.toLowerCase())),
   );
 
   const refresh = () => {
-    templates = LocalStoragePersistence.loadLabels();
+    if (cachedRevision !== LocalStoragePersistence.labelsRevision) {
+      templates = LocalStoragePersistence.loadLabels();
+      cachedRevision = LocalStoragePersistence.labelsRevision;
+    }
     error = "";
     pendingDelete = undefined;
   };
@@ -39,7 +43,7 @@
     refresh();
     query = "";
     drawer.showModal();
-    drawer.querySelector<HTMLInputElement>('input[type="search"]')?.focus();
+    drawer.querySelector<HTMLInputElement>('input[type="search"]')?.focus({ preventScroll: true });
   };
   export const openSave = () => {
     refresh();
@@ -55,7 +59,7 @@
       error = "Could not save the template library. Your existing labels were kept. Export your label as a backup.";
       return false;
     }
-    templates = LocalStoragePersistence.loadLabels();
+    refresh();
     return true;
   };
 
@@ -78,7 +82,8 @@
 
   const load = (label: ExportedLabelTemplate) => {
     activeId = label.id;
-    loadLabel(label);
+    // Editor loading must not mutate the cached saved template.
+    loadLabel(structuredClone($state.snapshot(label)));
     drawer.close();
     notice = label.title ?? "Template loaded";
   };
@@ -133,6 +138,17 @@
       error = `Export failed: ${String(cause)}`;
     }
   };
+  onMount(() => {
+    const changed = (event: StorageEvent) => {
+      if (
+        event.storageArea === localStorage &&
+        (event.key === null || event.key.startsWith("saved_label") || event.key.startsWith("saved_canvas_"))
+      )
+        cachedRevision = -1;
+    };
+    window.addEventListener("storage", changed);
+    return () => window.removeEventListener("storage", changed);
+  });
 </script>
 
 {#if controls}
@@ -190,7 +206,11 @@
               onclick={() => load(label)}
               aria-label={`Open ${label.title ?? "Untitled label"}`}>
               <div class="studio-template-thumb">
-                {#if label.thumbnailBase64}<img src={label.thumbnailBase64} alt="" />{:else}<MdIcon icon="label" />{/if}
+                {#if label.thumbnailBase64}<img
+                    src={label.thumbnailBase64}
+                    alt=""
+                    loading="lazy"
+                    decoding="async" />{:else}<MdIcon icon="label" />{/if}
               </div>
               <strong>{label.title ?? "Untitled label"}</strong>
               <span

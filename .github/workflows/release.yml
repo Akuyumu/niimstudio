@@ -13,15 +13,15 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
         with:
           path: .release
           merge-multiple: true
       - name: Checksum all release assets
         working-directory: .release
         run: sha256sum niimstudio-linux.tar.gz install.sh *.flatpak > SHA256SUMS
-      - name: Publish v0.1.0
+      - name: Publish verified release
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" .release/niimstudio-linux.tar.gz .release/SHA256SUMS .release/install.sh .release/*.flatpak --verify-tag --title "NiimStudio $GITHUB_REF_NAME" --notes-file docs/RELEASE-NOTES.md

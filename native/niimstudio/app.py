@@ -3,9 +3,9 @@
 import base64
 import json
 import logging
-import mimetypes
 import os
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -22,12 +22,28 @@ from . import __version__
 from .bluetooth import BluetoothTransport, BlueZ
 from .devices import DeviceChooser
 from .history import DeviceHistory
+from .lifecycle import enabled, mark
 from .serial_transport import SerialTransport, discover_serial
 from .theme import gtk_css, gtk_palette, read_palette
 
 LOG = logging.getLogger("niimstudio")
+mark("gtk_imported")
 ROOT = Path(__file__).resolve().parents[2]
 ORIGIN = "niimstudio://app/"
+MIME_TYPES = {
+    ".html": "text/html",
+    ".js": "text/javascript",
+    ".mjs": "text/javascript",
+    ".css": "text/css",
+    ".json": "application/json",
+    ".webmanifest": "application/manifest+json",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".ico": "image/x-icon",
+    ".woff2": "font/woff2",
+    ".woff": "font/woff",
+    ".wasm": "application/wasm",
+}
 
 
 def asset_path(uri, root):
@@ -45,6 +61,7 @@ def validate_message(message):
         raise ValueError("Invalid bridge message")
     if message.get("op") not in {
         "ready",
+        "workspaceReady",
         "connect",
         "disconnect",
         "write",
@@ -58,6 +75,16 @@ def validate_message(message):
     }:
         raise ValueError("Unknown bridge operation")
     return message
+
+
+def configure_rendering(settings):
+    """A reversible, per-process fallback; never disable WebKit's sandbox."""
+    mode = os.environ.get("NIIMSTUDIO_RENDERER", "auto")
+    if mode == "software":
+        settings.set_hardware_acceleration_policy(WebKit.HardwareAccelerationPolicy.NEVER)
+    elif mode != "auto":
+        LOG.warning("Unknown NIIMSTUDIO_RENDERER value; using the default renderer")
+    return "software" if mode == "software" else "auto"
 
 
 class StudioApplication(Adw.Application):
@@ -75,6 +102,10 @@ class StudioApplication(Adw.Application):
         self.generation = 0
         self.shutting_down = False
         self.editor_ready = False
+        self.close_pending = False
+        self.close_generation = 0
+        self.close_prompt = False
+        self.close_timer = None
         self.selected_device = None
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="niimstudio-io")
         self.palette = None
@@ -114,6 +145,7 @@ class StudioApplication(Adw.Application):
         self.window = Adw.ApplicationWindow(
             application=self, title="NiimStudio", default_width=1380, default_height=900
         )
+        mark("window_created")
         self.window.connect("close-request", self.confirm_close)
         layout = Adw.ToolbarView()
         header = Adw.HeaderBar()
@@ -156,7 +188,7 @@ class StudioApplication(Adw.Application):
         manager.connect("script-message-received::studio", self.on_message)
         manager.add_script(
             WebKit.UserScript.new(
-                f"window.__NIIMSTUDIO_NATIVE__ = true; window.__NIIMSTUDIO_SMOKE__ = {str(self.smoke).lower()}; window.__NIIMSTUDIO_DEMO__ = {str(self.smoke and bool(os.environ.get('NIIMSTUDIO_DEMO'))).lower()}; window.__NIIMSTUDIO_RESTART_VERIFY__ = {str(self.smoke and bool(os.environ.get('NIIMSTUDIO_RESTART_VERIFY'))).lower()};",
+                f"window.__NIIMSTUDIO_NATIVE__ = true; window.__NIIMSTUDIO_SMOKE__ = {str(self.smoke).lower()}; window.__NIIMSTUDIO_DEMO__ = {str(self.smoke and bool(os.environ.get('NIIMSTUDIO_DEMO'))).lower()}; window.__NIIMSTUDIO_RESTART_VERIFY__ = {str(self.smoke and bool(os.environ.get('NIIMSTUDIO_RESTART_VERIFY'))).lower()}; window.__NIIMSTUDIO_BENCHMARK__ = {str(self.smoke and bool(os.environ.get('NIIMSTUDIO_BENCHMARK'))).lower()}; window.__NIIMSTUDIO_LIFECYCLE_MODE__ = {json.dumps(os.environ.get('NIIMSTUDIO_LIFECYCLE_MODE', '') if self.smoke else '')};",
                 WebKit.UserContentInjectedFrames.TOP_FRAME,
                 WebKit.UserScriptInjectionTime.START,
                 None,
@@ -164,30 +196,47 @@ class StudioApplication(Adw.Application):
             )
         )
         self.webview = WebKit.WebView(web_context=context, network_session=self.network, user_content_manager=manager)
+        mark("webview_created")
         settings = self.webview.get_settings()
+        configure_rendering(settings)
         settings.set_enable_developer_extras(bool(os.environ.get("NIIMSTUDIO_DEBUG")))
         settings.set_enable_write_console_messages_to_stdout(bool(os.environ.get("NIIMSTUDIO_DEBUG")) or self.smoke)
         settings.set_enable_page_cache(False)
         self.webview.connect("decide-policy", self.decide_policy)
         self.webview.connect("load-failed", self.load_failed)
         self.webview.connect("web-process-terminated", self.process_terminated)
+        if enabled():
+            self.webview.connect("load-changed", lambda _view, event: mark("load_" + event.value_nick))
         layout.set_content(self.webview)
         Gtk.StyleContext.add_provider_for_display(
             Gdk.Display.get_default(), self.css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
         self.sync_theme()
+        mark("theme_synced")
         self.theme_timer = GLib.timeout_add_seconds(2, self.sync_theme)
-        self.run_task(BlueZ, lambda bluez: setattr(self, "bluez", bluez))
-        self.webview.load_uri(ORIGIN + "index.html")
         self.window.present()
+        mark("window_presented")
+        # Let the compositor paint the themed window before WebKit's first
+        # process launch, which can block this thread on a busy machine.
+        GLib.idle_add(self.begin_load)
         if self.smoke:
             GLib.timeout_add_seconds(75, self.smoke_timeout)
 
+    def begin_load(self):
+        if not self.shutting_down:
+            mark("load_uri")
+            self.webview.load_uri(ORIGIN + "index.html")
+            mark("load_uri_returned")
+        return GLib.SOURCE_REMOVE
+
     def serve_asset(self, request):
+        started = time.monotonic_ns()
         try:
             path = asset_path(request.get_uri(), ROOT / "dist")
             data = path.read_bytes()
-            mime = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+            # Static map: avoid initializing the system MIME database on the
+            # UI thread while the first editor frame is loading.
+            mime = MIME_TYPES.get(path.suffix.lower(), "application/octet-stream")
             stream = Gio.MemoryInputStream.new_from_bytes(GLib.Bytes.new(data))
             response = WebKit.URISchemeResponse.new(stream, len(data))
             response.set_content_type(mime)
@@ -206,6 +255,7 @@ class StudioApplication(Adw.Application):
             headers.append("X-Content-Type-Options", "nosniff")
             response.set_http_headers(headers)
             request.finish_with_response(response)
+            mark("asset", name=path.name, bytes=len(data), ms=round((time.monotonic_ns() - started) / 1e6, 1))
         except (OSError, ValueError) as error:
             LOG.warning("Cannot serve bundled asset: %s", error)
             request.finish_error(
@@ -245,6 +295,21 @@ class StudioApplication(Adw.Application):
     def reply(self, request_id, value=None, error=None, cancelled=False):
         self.send({"id": request_id, "value": value, "error": str(error) if error else None, "cancelled": cancelled})
 
+    def send_font_families(self):
+        if self.shutting_down:
+            return GLib.SOURCE_REMOVE
+        families = sorted(
+            family.get_name() for family in self.window.get_pango_context().get_font_map().list_families()
+        )
+        self.send({"event": "fonts", "families": families})
+        return GLib.SOURCE_REMOVE
+
+    def ensure_bluez(self):
+        """BlueZ is only needed once the user connects or reconnects."""
+        if self.bluez is None:
+            self.bluez = BlueZ()
+        return self.bluez
+
     def on_message(self, _manager, value):
         try:
             raw = value.to_json(0)
@@ -261,13 +326,28 @@ class StudioApplication(Adw.Application):
             if operation.startswith("test") and not self.smoke:
                 raise RuntimeError("Test operations are unavailable in a normal workspace")
             if operation == "ready":
+                mark("bridge_ready")
                 self.editor_ready = True
-                families = sorted(
-                    family.get_name() for family in self.window.get_pango_context().get_font_map().list_families()
-                )
-                self.reply(request_id, {"palette": self.palette, "version": __version__, "fontFamilies": families})
-                if self.smoke:
+                self.reply(request_id, {"palette": self.palette, "version": __version__})
+                # Font enumeration is large and only populates the font picker;
+                # keep it off the path to the first usable editor frame.
+                GLib.idle_add(self.send_font_families)
+                if self.smoke and not os.environ.get("NIIMSTUDIO_LIFECYCLE_BENCHMARK"):
                     self.smoke_test()
+            elif operation == "workspaceReady":
+                mark("workspace_ready")
+                if os.environ.get("NIIMSTUDIO_LIFECYCLE_TRACE"):
+                    print("LIFECYCLE_TIMINGS=" + json.dumps(request.get("timings", {})), flush=True)
+                self.reply(request_id)
+                if self.smoke and os.environ.get("NIIMSTUDIO_LIFECYCLE_BENCHMARK"):
+                    self.smoke_failed = request.get("verified") is False
+
+                    def close_benchmark():
+                        mark("close_requested")
+                        self.window.close()
+                        return GLib.SOURCE_REMOVE
+
+                    GLib.timeout_add(100, close_benchmark)
             elif operation == "connect":
                 self.choose_printer(request_id, automatic=request.get("automatic") is True)
             elif operation == "knownDevice":
@@ -345,7 +425,7 @@ class StudioApplication(Adw.Application):
             transport = (
                 SerialTransport(data_received, disconnected)
                 if device["kind"] == "serial"
-                else BluetoothTransport(self.bluez, data_received, disconnected)
+                else BluetoothTransport(self.ensure_bluez(), data_received, disconnected)
             )
             self.transport = transport
             self.selected_device = device
@@ -369,7 +449,11 @@ class StudioApplication(Adw.Application):
         if automatic:
 
             def resolve():
-                objects = self.bluez.objects() if self.bluez else {}
+                try:
+                    bluez = self.ensure_bluez()
+                    objects = bluez.objects()
+                except GLib.Error:
+                    objects = {}
                 return self.history.resolve_last(discover_serial(), objects)
 
             def unavailable(error):
@@ -378,9 +462,14 @@ class StudioApplication(Adw.Application):
 
             self.run_task(resolve, selected, unavailable)
         else:
+            try:
+                bluez = self.ensure_bluez()
+            except GLib.Error as error:
+                LOG.info("Bluetooth is unavailable: %s", error)
+                bluez = None
             self.chooser = DeviceChooser(
                 self.window,
-                self.bluez,
+                bluez,
                 self.run_task,
                 selected,
                 canceled,
@@ -450,7 +539,10 @@ class StudioApplication(Adw.Application):
             self.theme_source = source
             self.theme_signature = signature
             self.webview.set_background_color(self.background_color(palette["background"]))
-            self.send({"event": "theme", "palette": palette})
+            # The ready handshake supplies the initial palette. Evaluating JS in
+            # the still-empty view starts a throwaway WebKit document/process.
+            if self.editor_ready:
+                self.send({"event": "theme", "palette": palette})
         return GLib.SOURCE_CONTINUE
 
     @staticmethod
@@ -476,22 +568,96 @@ class StudioApplication(Adw.Application):
         dialog.present(self.window)
 
     def confirm_close(self, _window):
-        if self.smoke:
+        if self.smoke and not os.environ.get("NIIMSTUDIO_LIFECYCLE_BENCHMARK"):
             return False
+        if self.close_pending or self.close_prompt:
+            return True
+        if not getattr(self, "printing", False):
+            self.prepare_close()
+            return True
+        self.close_prompt = True
         dialog = Adw.AlertDialog(
             heading="Close the label workspace?",
-            body=(
-                "A print job is in progress. Closing disconnects the printer and may leave a partial label."
-                if getattr(self, "printing", False)
-                else "Your draft is saved automatically. Save important labels to your library or export them before closing."
-            ),
+            body="A print job is in progress. Closing disconnects the printer and may leave a partial label.",
         )
         dialog.add_response("cancel", "Keep editing")
         dialog.add_response("close", "Close")
         dialog.set_close_response("cancel")
-        dialog.connect("response", lambda _d, response: self.quit() if response == "close" else None)
+
+        def responded(_dialog, response):
+            self.close_prompt = False
+            if response == "close":
+                self.prepare_close()
+
+        dialog.connect("response", responded)
         dialog.present(self.window)
         return True
+
+    def prepare_close(self):
+        """Flush the last debounced edit before removing the window, never silently lose it."""
+        if self.close_pending:
+            return
+        if not self.editor_ready:
+            self.window.destroy()
+            return
+        self.close_pending = True
+        self.close_generation += 1
+        generation = self.close_generation
+
+        def finished(view, result):
+            if not self.close_pending or generation != self.close_generation:
+                return
+            if self.close_timer is not None:
+                GLib.source_remove(self.close_timer)
+            self.close_timer = None
+            self.close_pending = False
+            try:
+                # "unavailable" means the editor never mounted, so there is no
+                # pending work to lose; only an explicit false is a save failure.
+                outcome = view.call_async_javascript_function_finish(result).to_string()
+            except GLib.Error:
+                outcome = "false"
+            if outcome in {"true", "unavailable"}:
+                mark("draft_flushed")
+                self.window.destroy()
+            else:
+                self.close_save_failed()
+
+        def expired():
+            self.close_timer = None
+            self.close_pending = False
+            self.close_save_failed()
+            return GLib.SOURCE_REMOVE
+
+        self.close_timer = GLib.timeout_add(2000, expired)
+        self.webview.call_async_javascript_function(
+            'return window.__niimstudioPrepareClose?.() ?? "unavailable";',
+            -1,
+            None,
+            None,
+            ORIGIN,
+            None,
+            finished,
+        )
+
+    def close_save_failed(self):
+        self.close_prompt = True
+        dialog = Adw.AlertDialog(
+            heading="The latest draft could not be saved",
+            body="Keep editing and export your work, or close without saving the latest changes.",
+        )
+        dialog.add_response("cancel", "Keep editing")
+        dialog.add_response("discard", "Close without saving")
+        dialog.set_response_appearance("discard", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_close_response("cancel")
+
+        def responded(_dialog, response):
+            self.close_prompt = False
+            if response == "discard":
+                self.window.destroy()
+
+        dialog.connect("response", responded)
+        dialog.present(self.window)
 
     def load_failed(self, _view, _event, uri, error):
         LOG.error("Editor failed to load %s: %s", uri, error)
@@ -516,7 +682,15 @@ class StudioApplication(Adw.Application):
         GLib.timeout_add_seconds(2, self.finish_smoke)
 
     def capture_test_view(self, request_id, name):
-        allowed = {"editor", "templates", "qr-dialog", "barcode-dialog", "print-preview", "stock-picker", "stock-detected"}
+        allowed = {
+            "editor",
+            "templates",
+            "qr-dialog",
+            "barcode-dialog",
+            "print-preview",
+            "stock-picker",
+            "stock-detected",
+        }
         directory = os.environ.get("NIIMSTUDIO_TEST_ARTIFACTS")
         if name not in allowed or not directory:
             self.reply(request_id, False)
@@ -609,6 +783,7 @@ class StudioApplication(Adw.Application):
         return GLib.SOURCE_REMOVE
 
     def shutdown_app(self, _app):
+        mark("shutdown")
         self.shutting_down = True
         if self.chooser:
             self.chooser._cleanup()

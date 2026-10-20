@@ -38,6 +38,10 @@ with tempfile.TemporaryDirectory(prefix="niimstudio-install-test-") as temporary
     version = json.loads((root / "package.json").read_text())["version"]
     result = subprocess.check_output([str(launcher), "--version"], env=environment, text=True)
     assert result.strip() == "NiimStudio " + version, result
+    fallback_version = subprocess.check_output(
+        [str(launcher), "--software-rendering", "--version"], env=environment, text=True
+    )
+    assert fallback_version.strip() == result.strip()
     subprocess.run(installer, env=environment, check=True)
     assert launcher.is_symlink() and saved.read_text() == '{"synthetic":"keep"}'
     if os.environ.get("NIIMSTUDIO_TEST_INSTALLED_GUI"):

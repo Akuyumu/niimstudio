@@ -761,7 +761,7 @@
       <ParamLockButton propName="offset" value={offset} savedValue={savedProps.offset} onClick={toggleSavedProp} />
     </div>
 
-    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{$tr("preview.close")}</button>
+    <button type="button" class="btn btn-secondary" onclick={() => modalRef.hide()}>{$tr("preview.close")}</button>
 
     {#if printState !== "idle"}
       <button

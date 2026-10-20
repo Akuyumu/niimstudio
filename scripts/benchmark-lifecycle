@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+"""Measure real launch-to-ready and close-to-process-exit with synthetic data."""
+
+import argparse
+import json
+import os
+import statistics
+import subprocess
+import tempfile
+import time
+from pathlib import Path
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
+parser.add_argument("--runs", type=int, default=5)
+parser.add_argument("--output", type=Path)
+args = parser.parse_args()
+if args.runs < 1:
+    parser.error("--runs must be positive")
+samples = []
+with tempfile.TemporaryDirectory(prefix="niimstudio-lifecycle-") as profile:
+    for _ in range(args.runs):
+        env = {
+            **os.environ,
+            "NIIMSTUDIO_LIFECYCLE_TRACE": "1",
+            "NIIMSTUDIO_LIFECYCLE_BENCHMARK": "1",
+            "NIIMSTUDIO_TEST_PROFILE": profile,
+        }
+        start = time.monotonic_ns()
+        result = subprocess.run(
+            [str(args.root.resolve() / "scripts/niimstudio"), "--smoke-test"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=90,
+            check=True,
+        )
+        end = time.monotonic_ns()
+        marks = {
+            item["event"]: item["ns"]
+            for line in result.stdout.splitlines()
+            if line.startswith("LIFECYCLE=")
+            for item in [json.loads(line.removeprefix("LIFECYCLE="))]
+        }
+        samples.append(
+            {
+                "launchReadyMs": (marks["workspace_ready"] - start) / 1e6,
+                "closeExitMs": (end - marks["close_requested"]) / 1e6,
+                "stagesMs": {name: (value - start) / 1e6 for name, value in marks.items()},
+                "stderr": result.stderr,
+            }
+        )
+summary = {
+    key: round(statistics.median(sample[key] for sample in samples), 1) for key in ("launchReadyMs", "closeExitMs")
+}
+report = {
+    "summary": summary,
+    "samples": samples,
+    "notes": "Fresh application processes; shared synthetic profile; filesystem cache is not cleared. Ready follows draft restore, font loading and two animation frames, not physical monitor presentation. Close starts after editor readiness; no hardware writes or human confirmation time.",
+}
+if args.output:
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(report, indent=2) + "\n")
+print(json.dumps(report, indent=2))

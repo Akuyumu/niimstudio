@@ -9,8 +9,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -27,7 +27,7 @@ jobs:
       - run: npm audit --audit-level=moderate
       - run: python3 scripts/package-release.py
       - run: xvfb-run -a dbus-run-session -- env NIIMSTUDIO_TEST_INSTALLED_GUI=1 python3 scripts/test-release-install.py .release
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: native
           path: .release/*
@@ -46,8 +46,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
         with:
           name: native
           path: .release
@@ -84,7 +84,7 @@ jobs:
           grep -qx synthetic-retained-data "$HOME/.var/app/io.github.niimstudio.App/data/niimstudio/installer-fixture.txt"
           flatpak run io.github.niimstudio.App --version
           xvfb-run -a dbus-run-session -- flatpak run io.github.niimstudio.App --smoke-test
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: flatpak-${{ matrix.arch }}
           path: .release/*.flatpak

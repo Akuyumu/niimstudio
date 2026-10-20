@@ -24,6 +24,7 @@ def release_files(root):
         "README.md",
         "install.sh",
         "scripts/niimstudio",
+        "scripts/launch.py",
         "scripts/system-python",
         "scripts/managed_install.py",
         "docs/INSTALLING.md",
