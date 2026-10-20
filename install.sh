@@ -109,7 +109,8 @@ main() {
       -h|--help)
         echo "Usage: bash install.sh [--native | --flatpak] [--version v0.1.0] [--install-deps | --no-deps] [--replace-source] [--check] [--yes]"
         echo "Installs/updates a prebuilt release for this user. No source build or shell-profile changes."
-        echo "Missing system dependencies require confirmation, or explicit --install-deps."
+        echo "Default: native. Flatpak is a separate explicit route (--flatpak) and is never installed automatically."
+        echo "Missing native dependencies require confirmation, or explicit --install-deps."
         return ;;
       *) die "Unknown option: $1 (see --help)" ;;
     esac
@@ -121,12 +122,11 @@ main() {
   command -v curl >/dev/null || die "Install curl first, then rerun this command"
   python="$(find_python || true)"
   if [[ "$format" == auto ]]; then
+    # Native is the default route. Flatpak is never selected, downloaded, or
+    # installed implicitly: it is an explicit, separate choice (--flatpak).
+    format=native
     if command -v flatpak >/dev/null && flatpak --user info io.github.niimstudio.App >/dev/null 2>&1; then
-      format=flatpak
-    elif [[ -e "$HOME/.local/bin/niimstudio" || -L "$HOME/.local/bin/niimstudio" ]] || { runtime_ready && sandbox_ready; }; then
-      format=native
-    else
-      format=flatpak
+      die "A Flatpak installation exists. Update it with --flatpak, or remove it before installing the native app (label data is kept)."
     fi
   fi
   echo "Installation format: $format"
@@ -161,9 +161,11 @@ main() {
       die "The existing niimstudio-runtime remote has an unexpected URL; refusing to alter it"
     fi
   elif runtime_ready && ! sandbox_ready; then
-    die "This host blocks the native WebKit sandbox. Use --flatpak; no kernel/security settings were changed"
+    die "This host blocks the native WebKit sandbox. Flatpak is the separate explicit route (--flatpak); no kernel/security settings were changed"
   elif ! runtime_ready; then
     echo "Needs Python 3.11+, PyGObject, GTK 4.12+, Libadwaita 1.5+, and WebKitGTK 6."
+    echo "This is the native route. Flatpak is separate and never installed automatically;"
+    echo "use --flatpak only if you explicitly want Flatpak and its GNOME runtime."
     dependency_command || die "Install the equivalent native packages for your distribution; see docs/INSTALLING.md"
     echo "System dependency command (BlueZ is included for Bluetooth):"
     printf '  sudo'; printf ' %q' "${deps[@]}"; printf '\n'

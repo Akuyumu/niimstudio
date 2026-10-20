@@ -1,4 +1,4 @@
-# Installing NiimStudio v0.1.2
+# Installing NiimStudio v0.1.3
 
 ## One command
 
@@ -12,48 +12,59 @@ The installer never launches the app, connects a printer, or prints a test label
 **Run as your normal user, not with sudo.** Only explicitly approved system-package
 installation uses sudo. There are no new `.deb`/`.rpm` repositories to configure.
 
-## How the single script chooses a format
+## How the script chooses a format
+
+**Native is the only default.** Flatpak is a separate, explicit route selected with
+`--flatpak`; the script never selects, downloads, or installs Flatpak on its own.
 
 | Environment | Default |
 | --- | --- |
-| Existing NiimStudio user Flatpak | Update the Flatpak |
+| Existing NiimStudio user Flatpak | Stop: use `--flatpak` to update it, or remove it to switch |
 | Existing native/source launcher | Keep the native route; source replacement needs opt-in |
 | Python 3.11+, PyGObject, GTK 4.12+, Libadwaita 1.5+, WebKitGTK 6 and usable sandbox namespaces | Small prebuilt native bundle |
-| Native runtime missing/too old | Offer Flatpak, with a maintained GNOME runtime |
+| Native runtime missing/too old | Prompt to install the listed native packages (with consent) |
 
-Flatpak bundles cover **x86-64 and ARM64**. A Flatpak-capable desktop is required;
-that covers many older Ubuntu/Debian, Fedora, Arch/Omarchy, openSUSE and other
-Linux desktops without replacing their GTK/WebKit packages. It does **not** mean
-every old kernel, 32-bit system, container, headless server, or distribution has
-been tested. Unsupported systems stop with instructions rather than pretending
-installation succeeded. Native bundles are architecture-neutral but require the
-correct system Python/GI/native libraries for that architecture.
+On Arch/Omarchy, `webkitgtk-6.0` is a normal 38 MiB package in `extra` (its GTK4,
+Libadwaita, libsoup3, GStreamer and Mesa dependencies are generally already
+installed). It is the GTK4 API version of the WebKit engine, sibling to the 4.1
+package used by GTK3 apps. The installer never installs it without confirmation;
+`--no-deps` stops instead.
 
-If Flatpak is missing, the script offers its normal distribution package using
-apt, pacman, dnf, zypper, apk, or xbps where recognized. Other distributions get
-[Flatpak setup instructions](https://flatpak.org/setup/), then can rerun the same
-script. Flatpak must be supported/configured by the host; the installer does not
-edit NixOS configuration or enable kernel features/system services itself.
+Flatpak bundles cover **x86-64 and ARM64** and include a maintained GNOME runtime.
+Choose that route explicitly when you want the runtime included, when your distro
+does not provide compatible native packages, or when host policy blocks native
+WebKit sandbox namespaces. It does **not** mean every old kernel, 32-bit system,
+container, headless server, or distribution has been tested. Unsupported systems
+stop with instructions rather than pretending installation succeeded. Native
+bundles are architecture-neutral but require the correct system Python/GI/native
+libraries for that architecture.
 
-If host policy blocks native WebKit's sandbox namespaces, automatic mode prefers
-Flatpak instead of changing that policy. A host that also blocks Flatpak needs
-its administrator/distribution's supported setup; the installer never disables
-WebKit sandboxing or changes sysctls. Release CI permits namespaces only inside
-its disposable test VMs so it can exercise the real sandboxed app.
+With `--flatpak`, if Flatpak is missing, the script offers its normal distribution
+package using apt, pacman, dnf, zypper, apk, or xbps where recognized. Other
+distributions get [Flatpak setup instructions](https://flatpak.org/setup/), then
+can rerun the same script. Flatpak must be supported/configured by the host; the
+installer does not edit NixOS configuration or enable kernel features/system
+services itself.
+
+If host policy blocks native WebKit's sandbox namespaces, the native route stops
+without changing that policy and points to the explicit Flatpak route. The
+installer never disables WebKit sandboxing or changes sysctls. Release CI permits
+namespaces only inside its disposable test VMs so it can exercise the real
+sandboxed app.
 
 ## Inspect first or choose a format/version
 
 This executes project code you choose to trust. For an inspect-before-running flow:
 
 ```bash
-curl -fsSLo niimstudio-install.sh https://raw.githubusercontent.com/Akuyumu/niimstudio/v0.1.2/install.sh
+curl -fsSLo niimstudio-install.sh https://raw.githubusercontent.com/Akuyumu/niimstudio/v0.1.3/install.sh
 less niimstudio-install.sh
-bash niimstudio-install.sh --version v0.1.2
+bash niimstudio-install.sh --version v0.1.3
 ```
 
 ```bash
-bash niimstudio-install.sh --flatpak           # always use the bundled GNOME runtime
-bash niimstudio-install.sh --native            # use/install distro-native GTK/WebKit
+bash niimstudio-install.sh --flatpak           # explicit separate route; includes GNOME runtime
+bash niimstudio-install.sh --native            # default: distro-native GTK/WebKit
 bash niimstudio-install.sh --check             # no app install or package changes
 bash niimstudio-install.sh --no-deps           # never install system packages
 bash niimstudio-install.sh --install-deps      # explicitly authorize missing system packages
@@ -63,9 +74,9 @@ Default confirmation reads `/dev/tty`, so it works with piped input. With no
 terminal it stops rather than assuming consent. `--yes` explicitly accepts the
 otherwise-interactive package, runtime-repository and app-install prompts; use
 only after reviewing this behavior. `--no-deps` does not prohibit downloading a
-Flatpak runtime into your user Flatpak installation. The script does not modify
-shell profiles, broad USB permissions, Bluetooth agents or bonds. Package-manager
-maintainer scripts may perform their normal service setup.
+Flatpak runtime into your user Flatpak installation when `--flatpak` was chosen.
+The script does not modify shell profiles, broad USB permissions, Bluetooth agents
+or bonds. Package-manager maintainer scripts may perform their normal service setup.
 
 ### Download integrity and trust
 
@@ -171,7 +182,7 @@ Both uninstall methods keep user data by default. Back up important labels first
 
 ## Packaging references
 
-v0.1.2 ships the native `tar.gz`, x86-64/ARM64 `.flatpak` bundles, `install.sh`,
+v0.1.3 ships the native `tar.gz`, x86-64/ARM64 `.flatpak` bundles, `install.sh`,
 and `SHA256SUMS`. Neither format includes private labels or proprietary NIIMBOT
 assets; source/dependency licenses are retained. This is not an AppImage, `.deb`,
 `.rpm`, or AUR release. The small installer + release download approach was

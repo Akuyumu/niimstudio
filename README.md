@@ -28,17 +28,19 @@ desktop, not Omarchy's shell or window manager.
 
 ## Quick start
 
-Install **v0.1.2** with one command on a Linux desktop:
+Install **v0.1.3** with one command on a Linux desktop:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Akuyumu/niimstudio/main/install.sh | bash
 ```
 
 Then open **NiimStudio** from your app menu. No Git, Node, npm, AUR, or source
-build needed. The script uses a small native bundle when the required GTK/WebKit
-runtime is available; otherwise it offers a **Flatpak** with the runtime included.
-Flatpak bundles are provided for **x86-64 and ARM64**. Missing packages and the
-Flathub runtime repository require consent; **do not run the installer with sudo**.
+build needed. **Native is the default** and uses a small prebuilt bundle; on
+Arch/Omarchy that is one extra package, `webkitgtk-6.0`, offered with consent.
+**Flatpak is a separate, explicit route** (`--flatpak`) that includes a maintained
+GNOME runtime; the installer never installs Flatpak on its own. Flatpak bundles are
+provided for **x86-64 and ARM64**. Missing packages and the Flathub runtime
+repository require consent; **do not run the installer with sudo**.
 
 [Inspect the script, pin a version, update or uninstall](docs/INSTALLING.md).
 This targets compatible Linux desktops, not every old kernel or 32-bit system.

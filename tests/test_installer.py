@@ -265,6 +265,57 @@ if 'install' in args:
                 result = subprocess.check_output(["bash", "-s", "--", str(release)], input=script, text=True)
                 self.assertEqual(result, manager)
 
+    def fake_flatpak(self, installed):
+        fake_bin = self.base / "auto-bin"
+        fake_bin.mkdir(exist_ok=True)
+        log = self.base / "auto-flatpak.log"
+        (fake_bin / "flatpak").write_text(
+            "#!/usr/bin/env bash\n"
+            f'echo "$*" >> "{log}"\n'
+            '[[ "$1" != "--user" ]] || shift\n'
+            f'[[ "$1" != "info" ]] || exit {0 if installed else 1}\n'
+            "exit 1\n"
+        )
+        (fake_bin / "flatpak").chmod(0o755)
+        return fake_bin, log
+
+    def run_auto_check(self, fake_bin):
+        environment = {
+            **os.environ,
+            "HOME": str(self.home),
+            "PATH": f"{fake_bin}:/usr/bin:/bin",
+        }
+        for key in ("NIIMSTUDIO_PYTHON", "FLATPAK_ID"):
+            environment.pop(key, None)
+        return subprocess.run(
+            ["bash", str(ROOT / "install.sh"), "--check"],
+            env=environment,
+            capture_output=True,
+            text=True,
+        )
+
+    def test_auto_mode_chooses_native_without_touching_flatpak(self):
+        fake_bin, log = self.fake_flatpak(installed=False)
+        result = self.run_auto_check(fake_bin)
+        self.assertIn("Installation format: native", result.stdout)
+        self.assertNotIn("Installation format: flatpak", result.stdout)
+        if log.exists():
+            self.assertNotIn("install", log.read_text())
+            self.assertNotIn("remote-add", log.read_text())
+
+    def test_auto_mode_requires_an_explicit_flatpak_route_when_one_exists(self):
+        fake_bin, log = self.fake_flatpak(installed=True)
+        result = self.run_auto_check(fake_bin)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--flatpak", result.stderr)
+        self.assertIn("Update it with --flatpak", result.stderr)
+        self.assertNotIn("install", log.read_text())
+
+    def test_help_states_that_flatpak_is_a_separate_explicit_route(self):
+        output = subprocess.check_output(["bash", str(ROOT / "install.sh"), "--help"], text=True)
+        self.assertIn("Default: native", output)
+        self.assertIn("never installed automatically", output)
+
 
 if __name__ == "__main__":
     unittest.main()

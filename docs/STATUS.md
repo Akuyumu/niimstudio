@@ -1,5 +1,16 @@
 # Status — 2026-10-20
 
+## v0.1.3 patch
+
+- Installer default is native only. Auto mode no longer selects, downloads, or
+  installs Flatpak; missing native packages are offered with consent, and an
+  existing Flatpak stops the default run with an explicit `--flatpak` instruction.
+  Flatpak remains a separate opt-in route with its own runtime and dependencies.
+- Tests assert default-native routing, no Flatpak install/remote calls, and the
+  existing-Flatpak stop. Docs describe the routes separately.
+- README/help call out `webkitgtk-6.0` on Arch/Omarchy as a normal 38 MiB package
+  (GTK4 API sibling of the installed 4.1 engine), not an unavailable dependency.
+
 ## v0.1.2 patch
 
 - Managed native installs check the public GitHub release feed once per launch
@@ -60,7 +71,7 @@
 
 ## Automated verification
 
-- 66 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
+- 69 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
   fragmentation, service discovery, notifications, and cleanup; mocked pairing
   agents/prompts; palette safety/GTK compositing, bridge validation, and device history.
 - Installer tests cover checksum failure, traversal/links, update rollback,
