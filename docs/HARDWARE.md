@@ -132,9 +132,9 @@ service discovery. [Bleak's BlueZ backend](https://github.com/hbldh/bleak/blob/d
 explicitly handles that transient error.
 
 The user subsequently confirmed Bluetooth works through the actual application,
-and later confirmed **at least one successful physical print on the B1 Pro**. The
-transport and label details for that print were not recorded, so do not relabel
-both USB and BLE print paths as fully verified.
+and later confirmed **successful physical B1 Pro prints over both USB and Bluetooth
+LE**. Label details and the tested fault cases were not recorded, so broader media
+and recovery coverage remains open.
 The native transport now refreshes the LE advertisement, shares/refcounts only
 its own chooser/connection discovery session, prefers the known combined
 NIIMBOT characteristic, and retries one local-abort/timeout after canceling its
@@ -193,9 +193,8 @@ the association. Untagged rolls still need manual selection.
 Record printer model, firmware/hardware versions, OS, connection type, and
 NiimBlueLib version, without publishing full Bluetooth addresses by default.
 
-- [ ] USB connect / negotiated model and print task / single physical label
-- [ ] BLE discovery / connect / single physical label
-- [x] User-confirmed physical B1 Pro print (transport and label details not recorded)
+- [x] USB connect / negotiated model and print task / single physical label
+- [x] BLE discovery / connect / single physical label
 - [ ] Optional pairing / PIN / passkey / confirmation / cancellation
 - [ ] 300-DPI dimensions, print direction, offsets, density, gaps/black marks
 - [ ] Reported stock auto-setup, non-reporting-roll picker, safe roll-change prompt
@@ -205,8 +204,8 @@ NiimBlueLib version, without publishing full Bluetooth addresses by default.
 - [ ] Restart: draft and named templates remain available
 - [ ] Theme switch: native chooser and editor update; output stays black/white
 
-One physical B1 Pro print is user-confirmed. Because its transport was not
-recorded, the separate USB/BLE connect-and-print items remain unchecked. The
-BLE connection/handshake/heartbeat stages also have agent-run hardware validation,
-and the user separately confirms USB connection. Do not extrapolate any of these
-results to other printer models or claim every fault path is covered.
+The user has confirmed physical prints on the B1 Pro over **both USB and Bluetooth
+LE**. The BLE connection/handshake/heartbeat stages also have agent-run hardware
+validation. Pairing prompts, different label media, multiple copies/CSV batches,
+and fault recovery remain unchecked. Do not extrapolate these results to other
+printer models or claim every fault path is covered.

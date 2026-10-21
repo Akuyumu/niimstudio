@@ -35,9 +35,9 @@
   matrix as stable releases. Publication is always prerelease and never latest;
   candidate installs can later be offered final stable, without downgrading to a
   previous stable version.
-- **Post-release acceptance:** the user confirmed a successful physical print on
-  their B1 Pro after v0.2.0. The transport and label details were not recorded, so
-  per-transport print coverage and fault behavior remain separate checklist items.
+- **Post-release acceptance:** the user confirmed successful physical B1 Pro
+  prints over **both USB and Bluetooth LE** after v0.2.0. Pairing prompts, batch
+  behavior and fault recovery remain separate checklist items.
 
 ## v0.2.0 settings and roll-read work
 
@@ -217,15 +217,14 @@
 ## Still needs real hardware / user acceptance
 
 A B1 Pro's classic/BLE advertisements have been observed. The user confirms USB
-connection, Bluetooth connection through the restarted GUI, and a successful
-physical print on the B1 Pro. The print's transport and label details were not
-recorded. Agent-run BLE link/handshake/heartbeat cycles also pass. Per-transport
-print coverage, BlueZ pairing prompts with real hardware, battery/RFID accuracy,
-automatic sizing from real media reports, behavior under printer faults, and
-representative real-media results still need the checklist in `HARDWARE.md`.
-Mock tests are not substitutes for these. Theme parsing and initial application are
-automated-tested; a live desktop theme switch should be included in future acceptance
-without changing the theme silently during development.
+connection, Bluetooth connection through the restarted GUI, and successful physical
+prints over **both USB and Bluetooth LE**. Agent-run BLE link/handshake/heartbeat
+cycles also pass. BlueZ pairing prompts with real hardware, battery/RFID accuracy,
+automatic sizing from third-party media, batch/fault behavior, and representative
+real-media results still need the checklist in `HARDWARE.md`. Mock tests are not
+substitutes for these. Theme parsing and initial application are automated-tested;
+a live desktop theme switch should be included in future acceptance without
+changing the theme silently during development.
 
 ## Not claimed / not included
 
@@ -245,8 +244,8 @@ without changing the theme silently during development.
 
 ## Next priorities
 
-1. Record which transport was used for the confirmed B1 Pro print; then verify both
-   USB and BLE print paths independently, one small label at a time.
+1. Exercise multiple copies, CSV batches, batch cancellation, and disconnect/reconnect
+   behavior on the now-confirmed USB and BLE B1 Pro paths.
 2. Fix device-specific problems based on user issue reports and redacted logs,
    preserving protocol reuse.
 3. Validate label stock profiles, saved-library/restart workflows, and batch UX,

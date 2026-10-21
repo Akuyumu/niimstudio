@@ -10,8 +10,8 @@ Stable release; v0.1.3 remains available as the previous stable version.
 - Simple print preview, Advanced tooltips, safe setup-failure recovery and offset validation.
 - Sharper display zoom, expanding font picker and aligned transport-neutral Devices controls.
 - Separate candidate/stable publication and update protections. Release automation
-  performs no physical print; a user later confirmed one successful B1 Pro print
-  (transport and label details not recorded).
+  performs no physical print; the user later confirmed successful B1 Pro prints over
+  both USB and Bluetooth LE.
 
 ## Inherited NiimBlue changelog
 
