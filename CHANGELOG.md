@@ -1,6 +1,6 @@
-# NiimStudio 0.2.0-rc.1
+# NiimStudio 0.2.0
 
-Opt-in release candidate; stable v0.1.3 is unchanged.
+Stable release; v0.1.3 remains available as the previous stable version.
 
 - Reliable B1 Pro BLE discovery, one bounded transient retry, and clearer connection feedback.
 - Connect is the normal action; Pair appears only after an authentication failure.
@@ -9,7 +9,7 @@ Opt-in release candidate; stable v0.1.3 is unchanged.
 - Explicit, session-scoped stock override and correctly available 50 mm stock presets.
 - Simple print preview, Advanced tooltips, safe setup-failure recovery and offset validation.
 - Sharper display zoom, expanding font picker and aligned transport-neutral Devices controls.
-- Separate candidate publication and stable-update protections. No physical print verification claimed.
+- Separate candidate/stable publication and update protections. No physical print verification claimed.
 
 ## Inherited NiimBlue changelog
 

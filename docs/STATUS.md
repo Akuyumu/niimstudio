@@ -2,17 +2,18 @@
 
 ## Stable/development separation
 
-- `main` remains at the published v0.1.3 baseline while current Bluetooth work is
-  on `dev`. User launchers are unchanged; this tester explicitly uses the checkout.
+- `main` is the accepted stable source line. v0.2.0 incorporates the validated BLE,
+  Settings, stock and preview work from `dev`; the previous stable v0.1.3 remains
+  available as an immutable release.
 - Both branches run checks. A release-policy gate requires a stable numeric tag,
   matching web/native versions and a commit already on `main` before packaging.
   The updater explicitly rejects drafts/prereleases as well as non-stable tags.
 - Managed installs and immutable published assets are independent of development
   builds; install validation failures preserve the previous baseline. Source users
-  can pin a release tag in a separate checkout. A separate opt-in 0.2.0-rc.1
-  candidate is prepared; stable v0.1.3 and main are unchanged.
+  can pin a release tag in a separate checkout. v0.2.0-rc.1 was validated first;
+  the accepted source was then promoted to stable v0.2.0.
 
-## 0.2.0-rc.1 final review
+## v0.2.0 release review
 
 - The user confirms Bluetooth now connects in the application. Pair is no longer
   a default row action: it appears only after that device's explicit authentication
@@ -32,9 +33,10 @@
   starts. New GUI regressions cover failures, override/restore/expiry and the 30mm fix.
 - Candidate tags have a separate dev-ancestry/version gate and the same package
   matrix as stable releases. Publication is always prerelease and never latest;
-  candidate installs can later be offered final stable, without downgrading to 0.1.3.
+  candidate installs can later be offered final stable, without downgrading to a
+  previous stable version.
 
-## Development settings and roll-read work (not released)
+## v0.2.0 settings and roll-read work
 
 - Top-right Settings replaces the native printer dropdown's everyday controls.
   Sound and idle timeout use existing NiimBlueLib commands with read-back
@@ -53,7 +55,7 @@
   parsed report cannot be bypassed by a saved preset.
 - Vite's development dependency is updated to 7.3.7 for current advisories.
 
-## Local Bluetooth feedback patch (not released)
+## v0.2.0 Bluetooth feedback
 
 - Known classic-only entries are hidden by default. Show all Bluetooth devices
   reveals them, disabled and explained under Bluetooth, never USB. Unknown BLE
@@ -72,7 +74,7 @@
   diagnostics timed out before GATT discovery, with no pairing/print commands.
   Those early diagnostics were superseded by the real connection tests below.
 
-## Follow-up BLE validation and UI feedback (development, not released)
+## v0.2.0 BLE validation and UI feedback
 
 - A fresh-advertisement/native link probe observed `le-connection-abort-by-local`;
   an independent Bleak 3.0.2 probe successfully resolved services and notifications
@@ -89,7 +91,7 @@
   static fallback. No speculative SKU or model-based loaded-roll size is inferred.
 - The user saw a real 50×24 mm size response for an identified 50×30 mm roll.
   The actual paper-info fields subsequently confirmed a software subtraction bug
-  (fixed in the candidate review above). A conflicting report must not silently
+  (fixed in the v0.2.0 release review above). A conflicting report must not silently
   replace an explicitly chosen physical size, even on a blank canvas.
 - Native preview shows Copies and Print; technical controls are collapsed under
   Advanced with plain-language hover descriptions. Protocol selection is automatic.

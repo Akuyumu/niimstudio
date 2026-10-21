@@ -18,8 +18,9 @@ desktop, not Omarchy's shell or window manager.
   and edit it later. Code 128 and EAN-13 values are validated.
 - Keep reusable labels in a searchable template sidebar. **Save as template**
   or **Ctrl+S** saves a named copy; your current draft is saved automatically.
-- Link a USB or Bluetooth LE printer through **Devices**, including pairing-code
-  prompts when needed. Remember the last printer and reconnect without reprinting.
+- Link a USB or Bluetooth LE printer through **Devices**. Connect is the normal
+  action; pairing is offered only if the printer requires authentication. Remember
+  the last printer and reconnect without reprinting.
 - Automatically use reported stock dimensions, printer DPI, and feed direction—no
   raw size or resolution knobs. Rolls without usable size data get a simple stock
   picker. Existing artwork is never resized without confirmation.
@@ -28,7 +29,7 @@ desktop, not Omarchy's shell or window manager.
 
 ## Quick start
 
-Install **v0.1.3** with one command on a Linux desktop:
+Install **v0.2.0** with one command on a Linux desktop:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Akuyumu/niimstudio/main/install.sh | bash
