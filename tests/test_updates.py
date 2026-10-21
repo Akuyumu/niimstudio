@@ -37,6 +37,13 @@ class VersionTests(unittest.TestCase):
             with self.subTest(tag=tag), patch("urllib.request.urlopen", return_value=response):
                 self.assertIsNone(fetch_latest("0.1.2"))
 
+    def test_drafts_and_prereleases_never_reach_stable_users(self):
+        for metadata in ({"draft": True}, {"prerelease": True}, {"tag_name": "v0.2.0-rc1"}):
+            response = MagicMock()
+            response.__enter__.return_value.read.return_value = json.dumps({"tag_name": "v0.2.0", **metadata}).encode()
+            with self.subTest(metadata=metadata), patch("urllib.request.urlopen", return_value=response):
+                self.assertIsNone(fetch_latest("0.1.2"))
+
     def test_update_command_is_pinned_and_does_not_install_packages(self):
         command = update_command("/tmp/niimstudio", "v0.2.0")
         self.assertIn("--version", command)

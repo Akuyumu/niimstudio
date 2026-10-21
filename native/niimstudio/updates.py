@@ -52,6 +52,8 @@ def fetch_latest(current_version, timeout=5):
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
         data = json.loads(response.read(64 * 1024))
+    if data.get("draft") or data.get("prerelease"):
+        return None
     tag = data.get("tag_name")
     latest = version_tuple(tag)
     current = version_tuple(current_version)

@@ -21,8 +21,11 @@ repository unless you are deliberately contributing an upstream change.
 
 ## Development and checks
 
-Use a feature branch based on `main`. Keep pull requests small, avoid unrelated
-reformatting, and preserve attribution. AI-assisted contributions are welcome,
+`main` is the stable source line; `dev` is the opt-in integration/testing line.
+Keep unfinished changes on `dev` or a feature branch, not on `main`. Both lines
+run CI. Merge to `main` only after automated/package checks and relevant user
+acceptance; a reported hardware issue stays unverified until tested on hardware.
+Keep pull requests small, avoid unrelated reformatting, and preserve attribution. AI-assisted contributions are welcome,
 but disclose them, understand the changes, and test them.
 
 ```bash
@@ -61,6 +64,13 @@ use synthetic labels, never the real saved library.
 
 ## Release packaging
 
+Normal users stay on published releases; development commits never update their
+installed app. Source users wanting a fixed baseline should check out an immutable
+release tag in a separate directory, not follow `dev`. Never rebuild a stable
+user's installed assets from the development checkout, replace their launcher, or
+run experimental data migrations against their library. The tester's
+`niimstudio-dev` launcher may follow `dev`; that is an explicit testing choice.
+
 ```bash
 npm run check
 npm run package:release
@@ -79,7 +89,12 @@ runs the real UI smoke test inside the sandbox, and publishes only after success
 Use **Package validation** (`package-validation.yml`, workflow_dispatch) to test
 packaging without a release. **Release** runs only for version tags and reuses
 those same checks before publishing. To publish, ensure
-package.json/native version agree, update release notes, and push `v<version>`.
+package.json/native version agree, update release notes, merge the accepted commit
+to `main`, and push `v<version>`. `scripts/check-release.py` blocks non-stable tags,
+version mismatches, and commits outside `main` before package/release jobs run.
+The stable updater independently rejects draft/prerelease releases and never
+installs a development checkout. Updates are opt-in; retaining a published
+release is supported. Failed install/download checks must leave it intact.
 Do not retag or overwrite an existing release. No actual printer commands run in
 release tests. Generated `.release/` and `.flatpak-*` directories stay ignored.
 

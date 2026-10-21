@@ -117,6 +117,29 @@ The runtime remote and shared runtimes are not removed by app uninstall.
 
 ## Native: updates, migration and removal
 
+### Stable releases versus development
+
+Published releases are the normal user channel. Editing/building the development
+checkout does not change an installed release. `main` is the stable source line;
+`dev` is explicitly for testing unfinished changes. Stable updates only come from
+published, non-prerelease version tags after package validation, never from `dev`.
+Update notifications do not install anything until **Update now** is selected.
+You can keep using an older release; a failed download/validation leaves the
+current managed installation intact.
+
+For a stable **source checkout**, clone a release tag in a separate directory,
+then follow the source build steps in README:
+
+```bash
+git clone --branch v0.1.3 --depth 1 https://github.com/Akuyumu/niimstudio.git niimstudio-stable
+```
+
+Do not switch or rebuild that directory while using it as your stable app. Keep
+development in a different checkout/launcher. Published tags/assets must not be
+moved or replaced; subsequent fixes get a new version. No software release can
+guarantee all printers or drivers work, but ongoing development must not replace
+the user's chosen baseline.
+
 Native installs add a menu entry and `~/.local/bin/niimstudio` without editing
 PATH. If that directory is not in PATH, use the app menu or the full command path.
 

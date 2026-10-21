@@ -47,6 +47,11 @@ This targets compatible Linux desktops, not every old kernel or 32-bit system.
 
 ### Updating
 
+Normal users stay on **published stable releases**, unaffected by our development
+checkout. `main` is the stable source line; `dev` is opt-in testing only. Updates
+are offered, not forced. For a pinned stable source checkout, see
+[stable versus development](docs/INSTALLING.md#stable-releases-versus-development).
+
 Native installs can update from the app: when a newer release is available, a
 small bar appears above the footer and can download the verified bundle and then
 restart. The same update is available from a terminal:
