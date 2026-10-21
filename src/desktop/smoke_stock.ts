@@ -160,6 +160,12 @@ export async function runStockSmoke(context: {
   const rollReadExplained =
     document.querySelector('[data-testid="roll-read-status"]')?.textContent?.includes("RFID roll tag detected") ===
     true;
+  const physicalStockFilterCorrect =
+    !!document.querySelector<HTMLButtonElement>('[data-stock-id="50x30"]') &&
+    !document.querySelector<HTMLButtonElement>('[data-stock-id="50x30"]')!.disabled &&
+    !document.querySelector('[data-stock-id="60x40"]') &&
+    !document.querySelector('[data-stock-id="70x40"]');
+  await nativeRequest("testSnapshot", { name: "stock-compatible" });
   document.querySelector<HTMLInputElement>('[data-setting="remember-roll"]')!.click();
   await click('[data-stock-id="40x30"]');
   await settle();
@@ -181,6 +187,42 @@ export async function runStockSmoke(context: {
   await settle();
   const rememberedRollCanBeChanged = !!document.querySelector('[data-stock-id="40x30"]');
   await click(".modal.show .btn-close");
+
+  await click('[data-action="label-stock"]');
+  await click('[data-stock-id="50x30"]');
+  await settle();
+  const fiftyMmRollSupported =
+    get(confirmedStock)?.widthMm === 50 &&
+    context.exportLabel().label.size.width === 560 &&
+    context.exportLabel().label.size.height === 354;
+  context.openPreview();
+  await settle();
+  const printableMarginsExplained =
+    document.querySelector('[data-testid="preview-printable-area"]')?.textContent?.includes("50 × 30 mm roll") ===
+      true && document.querySelector('[data-testid="preview-printable-area"]')?.textContent?.includes("47.4") === true;
+  const simplePrintPreview =
+    !!document.querySelector('.modal.show [aria-label="Copies"]') &&
+    !document.querySelector(".modal.show .param-lock-btn") &&
+    !document.querySelector(".modal.show #threshold") &&
+    document.querySelectorAll(".modal.show input, .modal.show select").length === 1;
+  const advanced = document.querySelector<HTMLDetailsElement>('[data-testid="print-advanced"]')!;
+  advanced.open = true;
+  advanced.dispatchEvent(new Event("toggle"));
+  await tick();
+  const advancedPrintControlsAvailable =
+    !!document.querySelector(".modal.show #threshold") && !document.querySelector('.modal.show option[value="B1"]');
+  const advancedPrintTooltips = Array.from(
+    document.querySelectorAll<HTMLElement>(
+      '[data-testid="print-advanced"] input, [data-testid="print-advanced"] select, [data-testid="print-advanced"] button',
+    ),
+  ).every((control) => (control.title?.length ?? 0) > 20);
+  await nativeRequest("testSnapshot", { name: "print-advanced" });
+  advanced.open = false;
+  advanced.dispatchEvent(new Event("toggle"));
+  await tick();
+  await nativeRequest("testSnapshot", { name: "stock-printable-area" });
+  await click(".modal.show .btn-close");
+  await waitFor(() => !document.querySelector(".modal.show"), "closed margin preview");
 
   connectionState.set("disconnected");
   printerMeta.set(previous.meta);
@@ -206,6 +248,12 @@ export async function runStockSmoke(context: {
     rememberedRollWorks,
     rememberedRollCannotOverrideConflictingReport,
     rememberedRollCanBeChanged,
+    physicalStockFilterCorrect,
+    fiftyMmRollSupported,
+    printableMarginsExplained,
+    simplePrintPreview,
+    advancedPrintControlsAvailable,
+    advancedPrintTooltips,
     ...settingsResults,
   };
 }

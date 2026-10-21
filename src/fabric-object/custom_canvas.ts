@@ -31,10 +31,7 @@ export class CustomCanvas extends fabric.Canvas {
   private virtualZoomRatio: number = 1;
   onZoomChange?: (zoom: number) => void;
 
-  constructor(
-    el?: string | HTMLCanvasElement,
-    options?: fabric.TOptions<fabric.CanvasOptions>,
-  ) {
+  constructor(el?: string | HTMLCanvasElement, options?: fabric.TOptions<fabric.CanvasOptions>) {
     super(el, options);
     this.setupZoomAndPan();
     this.preserveObjectStacking = true;
@@ -64,72 +61,66 @@ export class CustomCanvas extends fabric.Canvas {
     let lastMidPoint = { x: 0, y: 0 };
 
     container.addEventListener(
-        "touchstart",
-        (e: TouchEvent) => {
-          if (e.touches.length === 2) {
-            this.selection = false;
-            this.discardActiveObject();
+      "touchstart",
+      (e: TouchEvent) => {
+        if (e.touches.length === 2) {
+          this.selection = false;
+          this.discardActiveObject();
 
-            const touch1 = e.touches[0];
-            const touch2 = e.touches[1];
+          const touch1 = e.touches[0];
+          const touch2 = e.touches[1];
 
-            initialPinchDistance = Math.hypot(
-                touch1.clientX - touch2.clientX,
-                touch1.clientY - touch2.clientY,
-            );
-            initialZoom = this.getVirtualZoom();
+          initialPinchDistance = Math.hypot(touch1.clientX - touch2.clientX, touch1.clientY - touch2.clientY);
+          initialZoom = this.getVirtualZoom();
 
-            lastMidPoint = {
-              x: (touch1.clientX + touch2.clientX) / 2,
-              y: (touch1.clientY + touch2.clientY) / 2,
-            };
-          }
-        },
-        { passive: false },
+          lastMidPoint = {
+            x: (touch1.clientX + touch2.clientX) / 2,
+            y: (touch1.clientY + touch2.clientY) / 2,
+          };
+        }
+      },
+      { passive: false },
     );
 
     container.addEventListener(
-        "touchmove",
-        (e: TouchEvent) => {
-          if (e.touches.length === 2) {
-            e.preventDefault();
+      "touchmove",
+      (e: TouchEvent) => {
+        if (e.touches.length === 2) {
+          e.preventDefault();
 
-            const touch1 = e.touches[0];
-            const touch2 = e.touches[1];
+          const touch1 = e.touches[0];
+          const touch2 = e.touches[1];
 
-            // Zoom
-            const currentPinchDistance = Math.hypot(
-                touch1.clientX - touch2.clientX,
-                touch1.clientY - touch2.clientY,
-            );
+          // Zoom
+          const currentPinchDistance = Math.hypot(touch1.clientX - touch2.clientX, touch1.clientY - touch2.clientY);
 
-            if (initialPinchDistance > 0) {
-              const newZoom = currentPinchDistance / initialPinchDistance * initialZoom;
-              if (Math.abs(newZoom - this.virtualZoomRatio) > 0.02) {
-                if (isFinite(newZoom) && newZoom > 0) {
-                  this.virtualZoom(newZoom);
-                }
+          if (initialPinchDistance > 0) {
+            const newZoom = (currentPinchDistance / initialPinchDistance) * initialZoom;
+            if (Math.abs(newZoom - this.virtualZoomRatio) > 0.02) {
+              if (isFinite(newZoom) && newZoom > 0) {
+                this.virtualZoom(newZoom);
               }
             }
-
-            // Pan
-            const currentMidPoint = {
-              x: (touch1.clientX + touch2.clientX) / 2,
-              y: (touch1.clientY + touch2.clientY) / 2,
-            };
-
-            const dx = currentMidPoint.x - lastMidPoint.x;
-            const dy = currentMidPoint.y - lastMidPoint.y;
-
-            const wrapper = this.getElement().closest(".canvas-wrapper");
-            if (wrapper) {
-              wrapper.scrollLeft -= dx;
-              wrapper.scrollTop -= dy;
-            }
-            lastMidPoint = currentMidPoint;
           }
-        },
-        { passive: false },
+
+          // Pan
+          const currentMidPoint = {
+            x: (touch1.clientX + touch2.clientX) / 2,
+            y: (touch1.clientY + touch2.clientY) / 2,
+          };
+
+          const dx = currentMidPoint.x - lastMidPoint.x;
+          const dy = currentMidPoint.y - lastMidPoint.y;
+
+          const wrapper = this.getElement().closest(".canvas-wrapper");
+          if (wrapper) {
+            wrapper.scrollLeft -= dx;
+            wrapper.scrollTop -= dy;
+          }
+          lastMidPoint = currentMidPoint;
+        }
+      },
+      { passive: false },
     );
 
     const stopTouch = (e: TouchEvent) => {
@@ -146,6 +137,10 @@ export class CustomCanvas extends fabric.Canvas {
 
   public virtualZoom(newZoom: number) {
     this.virtualZoomRatio = Math.min(Math.max(0.25, newZoom), 4);
+    // CSS-only magnification stretches the original bitmap and blurs text.
+    // Rebuild the backing store at the display scale, keeping document units
+    // unchanged so exports, hit-testing and physical print sizes stay stable.
+    this.setDimensions({ width: this.getWidth(), height: this.getHeight() });
     this.setDimensions(
       {
         width: this.virtualZoomRatio * this.getWidth() + "px",
@@ -156,6 +151,15 @@ export class CustomCanvas extends fabric.Canvas {
     if (this.onZoomChange) {
       this.onZoomChange(this.virtualZoomRatio);
     }
+  }
+
+  override getRetinaScaling() {
+    const dpr = super.getRetinaScaling();
+    if (!this.enableRetinaScaling) return 1;
+    const pixels = Math.max(1, (this.width ?? 1) * (this.height ?? 1));
+    // Do not allocate unbounded high-resolution canvases for very large labels.
+    const budget = Math.max(1, Math.sqrt(16_000_000 / pixels) / dpr);
+    return dpr * Math.min(Math.max(1, this.virtualZoomRatio ?? 1), budget);
   }
 
   public virtualZoomIn() {
@@ -231,8 +235,7 @@ export class CustomCanvas extends fabric.Canvas {
       let lastY: number = bb.startY;
 
       for (let i = 1; i < splitParts; i++) {
-        const y =
-          bb.startY + segmentHeight * i - this.SEPARATOR_LINE_WIDTH / 2 + 1;
+        const y = bb.startY + segmentHeight * i - this.SEPARATOR_LINE_WIDTH / 2 + 1;
         points.push(y);
         segments.push({ start: lastY, end: y });
         lastY = y;
@@ -246,8 +249,7 @@ export class CustomCanvas extends fabric.Canvas {
       let lastX: number = bb.startX;
 
       for (let i = 1; i < splitParts; i++) {
-        const x =
-          bb.startX + segmentWidth * i - this.SEPARATOR_LINE_WIDTH / 2 + 1;
+        const x = bb.startX + segmentWidth * i - this.SEPARATOR_LINE_WIDTH / 2 + 1;
         points.push(x);
         segments.push({ start: lastX, end: x });
         lastX = x;
@@ -297,10 +299,7 @@ export class CustomCanvas extends fabric.Canvas {
     ctx.fillStyle = this.GRAY;
 
     ctx.beginPath();
-    if (
-      this.labelProps.tailLength !== undefined &&
-      this.labelProps.tailLength > 0
-    ) {
+    if (this.labelProps.tailLength !== undefined && this.labelProps.tailLength > 0) {
       if (this.labelProps.tailPos === "right") {
         ctx.rect(
           bb.endX - roundRadius,
@@ -316,19 +315,9 @@ export class CustomCanvas extends fabric.Canvas {
           this.height - bb.endY + roundRadius,
         );
       } else if (this.labelProps.tailPos === "left") {
-        ctx.rect(
-          0,
-          bb.endY / 2 - this.TAIL_WIDTH / 2,
-          bb.startX + roundRadius,
-          this.TAIL_WIDTH,
-        );
+        ctx.rect(0, bb.endY / 2 - this.TAIL_WIDTH / 2, bb.startX + roundRadius, this.TAIL_WIDTH);
       } else if (this.labelProps.tailPos === "top") {
-        ctx.rect(
-          bb.endX / 2 - this.TAIL_WIDTH / 2,
-          0,
-          this.TAIL_WIDTH,
-          bb.startY + roundRadius,
-        );
+        ctx.rect(bb.endX / 2 - this.TAIL_WIDTH / 2, 0, this.TAIL_WIDTH, bb.startY + roundRadius);
       }
     }
     ctx.fill();
@@ -343,28 +332,12 @@ export class CustomCanvas extends fabric.Canvas {
     if (this.labelProps.shape === "rounded_rect") {
       if (this.labelProps.split === "horizontal") {
         const segmentHeight = bb.height / splitParts;
-        ctx.roundRect(
-          bb.startX,
-          bb.startY,
-          bb.width,
-          segmentHeight,
-          roundRadius,
-        ); // First part
-        fold.points.forEach((y) =>
-          ctx.roundRect(bb.startX, y, bb.width, segmentHeight, roundRadius),
-        ); // Other parts
+        ctx.roundRect(bb.startX, bb.startY, bb.width, segmentHeight, roundRadius); // First part
+        fold.points.forEach((y) => ctx.roundRect(bb.startX, y, bb.width, segmentHeight, roundRadius)); // Other parts
       } else if (this.labelProps.split === "vertical") {
         const segmentWidth = bb.width / splitParts;
-        ctx.roundRect(
-          bb.startX,
-          bb.startY,
-          segmentWidth,
-          bb.height,
-          roundRadius,
-        ); // First part
-        fold.points.forEach((x) =>
-          ctx.roundRect(x, bb.startY, segmentWidth, bb.height, roundRadius),
-        ); // Other parts
+        ctx.roundRect(bb.startX, bb.startY, segmentWidth, bb.height, roundRadius); // First part
+        fold.points.forEach((x) => ctx.roundRect(x, bb.startY, segmentWidth, bb.height, roundRadius)); // Other parts
       } else {
         ctx.roundRect(0, 0, this.width, this.height, roundRadius);
       }
@@ -416,10 +389,7 @@ export class CustomCanvas extends fabric.Canvas {
 
     ctx.restore();
   }
-  override _renderObjects(
-    ctx: CanvasRenderingContext2D,
-    objects: fabric.FabricObject[],
-  ) {
+  override _renderObjects(ctx: CanvasRenderingContext2D, objects: fabric.FabricObject[]) {
     super._renderObjects(ctx, objects);
 
     if (!this.highlightMirror || this.getActiveObjects().length > 1) {
@@ -433,12 +403,7 @@ export class CustomCanvas extends fabric.Canvas {
       infos.forEach((info) => {
         const bbox = obj.getBoundingRect();
         ctx.fillStyle = this.MIRROR_GHOST_COLOR;
-        ctx.fillRect(
-          info.pos.x - bbox.width / 2,
-          info.pos.y - bbox.height / 2,
-          bbox.width,
-          bbox.height,
-        );
+        ctx.fillRect(info.pos.x - bbox.width / 2, info.pos.y - bbox.height / 2, bbox.width, bbox.height);
         ctx.restore();
       });
     });
@@ -452,10 +417,7 @@ export class CustomCanvas extends fabric.Canvas {
     const fold = this.getFoldInfo();
     const result: MirrorInfo[] = [];
 
-    if (
-      fold.axis === "none" ||
-      !(this.labelProps.mirror === "flip" || this.labelProps.mirror === "copy")
-    ) {
+    if (fold.axis === "none" || !(this.labelProps.mirror === "flip" || this.labelProps.mirror === "copy")) {
       return result;
     }
 
@@ -468,10 +430,7 @@ export class CustomCanvas extends fabric.Canvas {
           pos.setX(x + (pos.x - bounds.startX));
           result.push({ pos, flip: false });
         });
-      } else if (
-        this.labelProps.mirror === "flip" &&
-        fold.points.length === 1
-      ) {
+      } else if (this.labelProps.mirror === "flip" && fold.points.length === 1) {
         // Half split only supported
         const axisX = fold.points[0];
         const pos = obj.getPointByOrigin("center", "center");
@@ -486,10 +445,7 @@ export class CustomCanvas extends fabric.Canvas {
           pos.setY(y + (pos.y - bounds.startY));
           result.push({ pos, flip: false });
         });
-      } else if (
-        this.labelProps.mirror === "flip" &&
-        fold.points.length === 1
-      ) {
+      } else if (this.labelProps.mirror === "flip" && fold.points.length === 1) {
         // Half split only supported
         const axisY = fold.points[0];
         const pos = obj.getPointByOrigin("center", "center");

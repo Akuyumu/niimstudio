@@ -11,6 +11,11 @@
     setVerifiedSleep,
     setVerifiedSound,
     offeredSleepModes,
+    visiblePrinterSettings,
+    SettingsConfirmationError,
+    settingLabels,
+    settingKeys,
+    type PrinterSettingKey,
     type PrinterSettingsSnapshot,
   } from "$/desktop/printer_settings";
 
@@ -21,13 +26,23 @@
   let reconnect = $state<boolean>();
   let error = $state("");
   let notice = $state("");
+  let feedback = $state<Partial<Record<PrinterSettingKey, { ok: boolean; text: string }>>>({});
   const connected = $derived($connectionState === "connected");
   const sleepModes = $derived(offeredSleepModes($printerInfo?.capabilities?.autoShutdownRange));
+  const visible = $derived(visiblePrinterSettings(snapshot, $printerInfo?.capabilities?.autoShutdownRange));
   const available = $derived(connected && loadedClient === $printerClient && !busy && !$printJobActive);
+  $effect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => {
+      notice = "";
+    }, 3500);
+    return () => clearTimeout(timer);
+  });
   $effect(() => {
     if ($connectionState !== "connected" || (loadedClient && loadedClient !== $printerClient)) {
       loadedClient = undefined;
       snapshot = { errors: [] };
+      feedback = {};
     }
   });
 
@@ -36,6 +51,7 @@
     const client = $printerClient;
     error = notice = "";
     snapshot = { errors: [] };
+    feedback = {};
     loadedClient = undefined;
     busy = true;
     try {
@@ -61,7 +77,7 @@
   const changeSound = async (type: SoundSettingsItemType, event: Event) => {
     const checkbox = event.currentTarget as HTMLInputElement;
     const key = type === SoundSettingsItemType.PowerSound ? "powerSound" : "connectionSound";
-    if (!available) {
+    if (!available || !visible.includes(key)) {
       checkbox.checked = snapshot[key] === true;
       return;
     }
@@ -75,9 +91,19 @@
         throw new Error("The printer disconnected or changed; refresh its settings.");
       snapshot = { ...snapshot, [key]: value };
       printerInfo.update((info) => ({ ...info, settings: { ...info.settings, [key]: value } }));
-      notice = "Printer confirmed the sound setting.";
+      feedback[key] = { ok: true, text: "Confirmed by printer" };
     } catch (cause) {
-      error = cause instanceof Error ? cause.message : String(cause);
+      error = `${settingLabels[key]}: ${cause instanceof Error ? cause.message : String(cause)}`;
+      if (client === get(printerClient) && get(connectionState) === "connected") {
+        snapshot = {
+          ...snapshot,
+          [key]:
+            cause instanceof SettingsConfirmationError && typeof cause.observed === "boolean"
+              ? cause.observed
+              : undefined,
+        };
+        feedback[key] = { ok: false, text: error };
+      }
     } finally {
       checkbox.checked = snapshot[key] === true;
       busy = false;
@@ -85,7 +111,7 @@
   };
   const changeSleep = async (event: Event) => {
     const select = event.currentTarget as HTMLSelectElement;
-    if (!available) {
+    if (!available || !visible.includes("sleepMode")) {
       select.value = String(snapshot.sleepMode ?? "");
       return;
     }
@@ -104,9 +130,19 @@
         throw new Error("The printer disconnected or changed; refresh its settings.");
       snapshot = { ...snapshot, sleepMode: mode };
       printerInfo.update((info) => ({ ...info, autoShutdownTime: mode }));
-      notice = "Printer confirmed the sleep-mode code. Its timing depends on firmware.";
+      feedback.sleepMode = { ok: true, text: "Mode confirmed by printer" };
     } catch (cause) {
-      error = cause instanceof Error ? cause.message : String(cause);
+      error = `Sleep / auto power-off: ${cause instanceof Error ? cause.message : String(cause)}`;
+      if (client === get(printerClient) && get(connectionState) === "connected") {
+        snapshot = {
+          ...snapshot,
+          sleepMode:
+            cause instanceof SettingsConfirmationError && typeof cause.observed === "number"
+              ? cause.observed
+              : undefined,
+        };
+        feedback.sleepMode = { ok: false, text: error };
+      }
     } finally {
       select.value = String(snapshot.sleepMode ?? "");
       busy = false;
@@ -115,7 +151,7 @@
   const changeReconnect = async (event: Event) => {
     const checkbox = event.currentTarget as HTMLInputElement;
     const enabled = checkbox.checked;
-    if (busy) {
+    if (busy || $printJobActive) {
       checkbox.checked = reconnect === true;
       return;
     }
@@ -134,6 +170,20 @@
   };
 </script>
 
+{#snippet settingFeedback(key: PrinterSettingKey)}
+  {#if feedback[key]}
+    <p
+      class="small"
+      class:text-success={feedback[key]?.ok}
+      class:text-danger={!feedback[key]?.ok}
+      role="status"
+      data-feedback={key}>
+      {feedback[key]?.ok ? "✓" : "⚠"}
+      {feedback[key]?.text}
+    </p>
+  {/if}
+{/snippet}
+
 <button
   class="btn btn-sm btn-secondary studio-settings-button"
   title="App and printer settings"
@@ -150,56 +200,72 @@
     {#if !connected}<p class="text-secondary">Connect a printer to read or change its sounds and sleep mode.</p>{/if}
     {#if $printJobActive}<p class="text-secondary">Printer settings are locked while a print job is running.</p>{/if}
     {#if busy}<p class="text-secondary" role="status">Reading or saving settings…</p>{/if}
-    <section>
-      <h2>Printer sounds</h2>
-      <label class="studio-setting-row form-switch">
-        <span><strong>Power sounds</strong><small>Printer startup and power-off sounds</small></span>
-        <input
-          class="form-check-input"
-          type="checkbox"
-          role="switch"
-          data-setting="power-sound"
-          checked={snapshot.powerSound === true}
-          disabled={!available || snapshot.powerSound === undefined}
-          onchange={(event) => changeSound(SoundSettingsItemType.PowerSound, event)} />
-      </label>
-      <label class="studio-setting-row form-switch">
-        <span><strong>Connection sounds</strong><small>Bluetooth connection and disconnection sounds</small></span>
-        <input
-          class="form-check-input"
-          type="checkbox"
-          role="switch"
-          data-setting="connection-sound"
-          checked={snapshot.connectionSound === true}
-          disabled={!available || snapshot.connectionSound === undefined}
-          onchange={(event) => changeSound(SoundSettingsItemType.BluetoothConnectionSound, event)} />
-      </label>
-      {#if connected && loadedClient && snapshot.powerSound === undefined && snapshot.connectionSound === undefined}<p
-          class="text-secondary small">
-          This printer did not report sound settings; they are unavailable.
-        </p>{/if}
-    </section>
-    <section>
-      <h2>Sleep / auto power-off</h2>
-      <label for="studio-sleep-mode" class="form-label">Idle timeout</label>
-      <select
-        id="studio-sleep-mode"
-        class="form-select"
-        data-setting="sleep-mode"
-        value={snapshot.sleepMode ?? ""}
-        disabled={!available || !sleepModes.some((mode) => mode.value === snapshot.sleepMode)}
-        onchange={changeSleep}>
-        {#if !sleepModes.some((mode) => mode.value === snapshot.sleepMode)}<option value={snapshot.sleepMode ?? ""}
-            >{snapshot.sleepMode === undefined ? "Not reported" : `Unmapped mode ${snapshot.sleepMode}`}</option
-          >{/if}
-        {#each sleepModes as mode (mode.value)}<option value={mode.value}>{mode.label}</option>{/each}
-      </select>
-      <p class="text-secondary small mt-2">
-        The printer exposes mode codes, not minutes. Its fourth mode disables sleep on some firmware and means 60
-        minutes on others. NiimStudio cannot promise “never” until this model/firmware is verified. No reset or
-        power-off command is sent.
-      </p>
-    </section>
+    {#if visible.includes("powerSound") || visible.includes("connectionSound")}
+      <section>
+        <h2>Printer sounds</h2>
+        {#if visible.includes("powerSound")}
+          <label class="studio-setting-row form-switch">
+            <span><strong>Power sounds</strong><small>Printer startup and power-off sounds</small></span>
+            <input
+              class="form-check-input"
+              type="checkbox"
+              role="switch"
+              data-setting="power-sound"
+              checked={snapshot.powerSound === true}
+              disabled={!available || snapshot.powerSound === undefined}
+              onchange={(event) => changeSound(SoundSettingsItemType.PowerSound, event)} />
+          </label>
+          {@render settingFeedback("powerSound")}
+        {/if}
+        {#if visible.includes("connectionSound")}
+          <label class="studio-setting-row form-switch">
+            <span><strong>Connection sounds</strong><small>Bluetooth connection and disconnection sounds</small></span>
+            <input
+              class="form-check-input"
+              type="checkbox"
+              role="switch"
+              data-setting="connection-sound"
+              checked={snapshot.connectionSound === true}
+              disabled={!available || snapshot.connectionSound === undefined}
+              onchange={(event) => changeSound(SoundSettingsItemType.BluetoothConnectionSound, event)} />
+          </label>
+          {@render settingFeedback("connectionSound")}
+        {/if}
+      </section>
+    {/if}
+    {#if visible.includes("sleepMode")}
+      <section>
+        <h2>Sleep / auto power-off</h2>
+        <label for="studio-sleep-mode" class="form-label">Idle timeout</label>
+        <select
+          id="studio-sleep-mode"
+          class="form-select"
+          data-setting="sleep-mode"
+          value={snapshot.sleepMode ?? ""}
+          disabled={!available || !sleepModes.some((mode) => mode.value === snapshot.sleepMode)}
+          onchange={changeSleep}>
+          {#if !sleepModes.some((mode) => mode.value === snapshot.sleepMode)}<option value={snapshot.sleepMode ?? ""}
+              >{snapshot.sleepMode === undefined ? "Not reported" : `Unmapped mode ${snapshot.sleepMode}`}</option
+            >{/if}
+          {#each sleepModes as mode (mode.value)}<option value={mode.value}>{mode.label}</option>{/each}
+        </select>
+        {@render settingFeedback("sleepMode")}
+        <p class="text-secondary small mt-2">
+          The printer exposes mode codes, not minutes. Its fourth mode disables sleep on some firmware and means 60
+          minutes on others. NiimStudio cannot promise “never” until this model/firmware is verified. No reset or
+          power-off command is sent.
+        </p>
+      </section>
+    {/if}
+    {#if connected && loadedClient && !visible.length && !busy}<p
+        class="text-secondary"
+        data-testid="no-printer-settings">
+        No adjustable printer settings were reported. Unavailable controls are hidden; try Refresh settings after
+        checking the connection.
+      </p>{/if}
+    {#each settingKeys.filter((key) => feedback[key] && !visible.includes(key)) as key (key)}
+      {@render settingFeedback(key)}
+    {/each}
     <section>
       <h2>Connection</h2>
       <label class="studio-setting-row form-switch">

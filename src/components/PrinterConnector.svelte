@@ -212,7 +212,8 @@
       class="btn btn-secondary"
       onclick={onManageDevices}
       disabled={$connectionState === "connecting" || $printJobActive}
-      title="Select printer, pair Bluetooth, or manage reconnect"><MdIcon icon="settings_bluetooth" /> Devices</button>
+      title={reconnectStatus || "Select printer, pair Bluetooth, or manage reconnect"}
+      data-action="devices"><MdIcon icon="print" /> Devices</button>
   {/if}
   {#if $connectionState === "connected"}
     {#if !isNative}
@@ -426,8 +427,6 @@
     <PrinterVerboseInfo bind:show={verboseInfoShow} />
   {/if}
 </div>
-
-{#if isNative && reconnectStatus}<div class="studio-reconnect-status" role="status">{reconnectStatus}</div>{/if}
 
 <style>
   .studio-connection-failure {

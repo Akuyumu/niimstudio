@@ -64,6 +64,8 @@
   <input
     type="text"
     class="form-control font-family-input"
+    aria-label="Font family"
+    title={value}
     data-ver={editRevision}
     {value}
     oninput={(e) => valueUpdated(e.currentTarget.value)} />

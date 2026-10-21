@@ -15,15 +15,18 @@
    automatically size an empty/new canvas; existing artwork gets a confirmation
    first. If usable dimensions are not reported, choose the size on the roll
    packaging in **Label stock**. There are no raw size/DPI/direction controls in
-   the desktop UI. The B1 Pro profile has 567 printhead pixels; widths are rounded
-   down to multiples of eight, and oversized presets are unavailable. Choose
-   40×30 mm **only if that is the stock actually loaded**; 50 mm exceeds its head.
-6. Open **Preview** and verify orientation, margins, density, and dithering.
-   NiimBlueLib negotiates a print task. If the B1 Pro needs an override, the
-   user-reported working task is `D110M_V4`; select
-   it in the preview and use the lock control to remember it.
+    the desktop UI. A B1 Pro supports 20–50 mm label widths: physical roll width is
+    not printhead width. **50×30 mm is supported**, with non-printable edge margins.
+    The printable canvas uses the reported head width (576 px on the tested unit)
+    or the library's conservative 567 px fallback, byte-aligned downwards. The
+    picker hides presets outside the known physical media limits. Choose the
+    actual roll size, not the closest-looking preset.
+6. Open **Preview**, check the image and margins, and set **Copies**. The printer's
+    protocol is selected automatically. Optional image processing, print darkness,
+    speed, material and alignment controls are under **Advanced**, with plain-language
+    hover descriptions. Ordinary printing needs no protocol-task selection.
 7. Choose one copy and explicitly press **Print**. Verify the physical result
-   before attempting batches.
+    before attempting batches.
 
 The app is never run as root and does not print, pair, reset a printer, or
 flash firmware automatically. Canceling a batch stops **remaining pages** after
@@ -54,7 +57,12 @@ shapes and shows ordinary rounded stock with approximate corners in both views.
 Changing canvas size does not silently scale or rearrange artwork. A confirmation
 protects existing designs; Undo restores the previous canvas size. Printing is
 blocked until the design matches detected or explicitly chosen stock. This logic
-has synthetic-metadata tests, but real B1 Pro stock reporting still needs testing.
+has synthetic-metadata tests. A user screenshot now confirms a real dimensions
+response, but it showed 50×24 mm for a roll the user identified as 50×30 mm. That
+discrepancy is unresolved: inspect **Settings → Printer and roll details → paper**,
+particularly `totalHeight` and `gapHeight`, rather than assuming the displayed
+height is correct or silently rewriting the parser. The stock dialog explains
+that NiimBlueLib subtracts the reported gap from the reported feed length.
 
 ## USB permission errors
 
@@ -105,12 +113,50 @@ app never turns adapters on/off, trusts arbitrary devices, removes existing
 bonds, or replaces the desktop pairing agent. If a device is busy, close the
 phone app before retrying rather than resetting its settings automatically.
 
+### B1 Pro connection validation (development, 2026-10-21)
+
+An independent Bleak 3.0.2 probe established the LE link and enabled notifications
+without pairing. The original native transport was intermittent: one of three
+attempts timed out, while two completed the protocol handshake. A D-Bus trace
+also caught a brief connection followed by `le-connection-abort-by-local` before
+service discovery. [Bleak's BlueZ backend](https://github.com/hbldh/bleak/blob/develop/bleak/backends/bluezdbus/client.py)
+explicitly handles that transient error.
+
+The native transport now refreshes the LE advertisement, shares/refcounts only
+its own chooser/connection discovery session, prefers the known combined
+NIIMBOT characteristic, and retries one local-abort/timeout after canceling its
+own pending target connection. Authentication errors are not retried blindly;
+there is no automatic pairing, bond removal or adapter reset. The chooser shows
+link, service-discovery and notification progress, not an inert Connect button.
+
+With that change, **three consecutive native connect/handshake/heartbeat/disconnect
+cycles passed** on B1 Pro model 4097, firmware 2.12, protocol 5, reporting a 576 px
+head. Each received 14 notifications and three valid heartbeat-info responses.
+The handshake used the pinned NiimBlueLib 0.47.0 over the actual native GATT
+transport, not a newly implemented packet stack. Every diagnostic link was cleaned
+up. USB was not opened or closed by the tests. No Pair, print, reset, calibration,
+or setting-write commands were sent; paper-info opcode 0x59 was deliberately
+excluded from this connection-only probe. Physical BLE printing, power-cycle and
+mid-print radio-loss tests remain unverified.
+
+`btmon` is installed on the test machine but requires additional privileges to
+capture HCI traffic. No permissions were changed and no privileged capture was
+started. Private D-Bus/protocol diagnostics stay local, not in this repository.
+Only if failures recur should a short, user-approved `btmon -w` capture be made
+and opened in Wireshark. Such captures can include device identifiers and private
+Bluetooth traffic; do not attach them publicly without review.
+
 ## Printer settings (development checkout)
 
 Open **Settings** at the top right for power/connection sounds, sleep/auto-off and
 the app's reconnect preference. Printer changes are sent only on a user action
-and are read back before success is shown. Unsupported reads leave controls
-unavailable; settings lock while printing. No reset, calibration, paper feed or
+and are read back before success is shown. Unknown/unsupported reads hide controls
+rather than presenting them as off. A readable value does not prove a write will
+succeed: each change is independently verified. Matching values get a small green
+confirmation; mismatches retain the actual reported value and a persistent error.
+If the new value cannot be read, the control is hidden until refresh instead of
+showing a stale value as truth. Temporary success banners clear after 3.5 seconds;
+errors do not. Settings lock while printing. No reset, calibration, paper feed or
 firmware operation is included.
 
 The protocol exposes sleep mode codes: 1/2 are usually 15/30 minutes, 3 is 45/60
@@ -144,5 +190,7 @@ NiimBlueLib version, without publishing full Bluetooth addresses by default.
 - [ ] Restart: draft and named templates remain available
 - [ ] Theme switch: native chooser and editor update; output stays black/white
 
-Until these are performed against the actual device, describe the native
-transport as implemented and automated-tested, not hardware-verified.
+Only the BLE connection/handshake/heartbeat stages described above have agent-run
+hardware validation; the user separately confirms USB connection. The combined
+connect-and-print checklist items are still unchecked because physical prints
+have not been verified. Do not extrapolate these results to all printer models.

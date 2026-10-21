@@ -1,5 +1,12 @@
 /** Read-only printer metadata. Never infer a roll size from its printer model. */
-import { LabelType, type PaperInfo, type PrinterInfo, type PrinterModelMeta, type RfidInfo } from "@mmote/niimbluelib";
+import {
+  LabelType,
+  PrinterModel,
+  type PaperInfo,
+  type PrinterInfo,
+  type PrinterModelMeta,
+  type RfidInfo,
+} from "@mmote/niimbluelib";
 
 export function rollStockKey(model: string | undefined, tag: RfidInfo | undefined): string | undefined {
   const product = tag?.barCode?.trim();
@@ -13,6 +20,7 @@ export interface PrinterProfile {
   dpmm: number;
   printDirection: "left" | "top";
   printheadPixels: number;
+  mediaBounds?: { minWidth: number; maxWidth: number; minHeight: number; maxHeight: number };
 }
 export interface StockSize {
   widthMm: number;
@@ -24,6 +32,7 @@ export interface DetectedStock extends StockSize {
   printDirection: "left" | "top";
   dpi: number;
   labelType?: LabelType;
+  printableAreaLimited?: boolean;
 }
 
 export const stockSizes = [
@@ -44,18 +53,29 @@ export const offlineProfile: PrinterProfile = { dpi: 203, dpmm: 8, printDirectio
 
 export function printerProfile(
   meta?: PrinterModelMeta,
-  info?: Pick<PrinterInfo, "capabilities">,
+  info?: Pick<PrinterInfo, "capabilities" | "printheadWidth">,
 ): PrinterProfile | undefined {
   if (!meta || !["left", "top"].includes(meta.printDirection) || !(meta.printheadPixels >= 8)) return;
   // The capabilities protocol calls its 203-DPI class "200".
   const reported = info?.capabilities?.printheadDpi;
   const dpi = reported === 200 ? 203 : (reported ?? meta.dpi);
+  const reportedHead = info?.printheadWidth;
+  const printheadPixels =
+    Number.isInteger(reportedHead) && reportedHead! >= 8 && reportedHead! <= 4096
+      ? reportedHead!
+      : meta.printheadPixels;
   if (![203, 300, 600].includes(dpi)) return;
   return {
     dpi,
     dpmm: dpi === 203 ? 8 : dpi / 25.4,
     printDirection: meta.printDirection,
-    printheadPixels: meta.printheadPixels,
+    printheadPixels,
+    // Physical media != printable raster width. Keep NiimBlueLib's conservative
+    // head limit; B1 Pro's documented stock range includes 50 mm rolls.
+    // Source: https://niimbotusa.com/printers/b1-pro (specifications).
+    ...(meta.model === PrinterModel.B1_PRO
+      ? { mediaBounds: { minWidth: 20, maxWidth: 50, minHeight: 8, maxHeight: 350 } }
+      : {}),
   };
 }
 
@@ -66,8 +86,17 @@ export function stockFromSize(stock: StockSize, profile: PrinterProfile): Detect
   const width = Math.round(stock.widthMm * profile.dpmm);
   const height = Math.round(stock.heightMm * profile.dpmm);
   const head = profile.printDirection === "left" ? height : width;
-  if (profile.printheadPixels && head > profile.printheadPixels) return;
-  const aligned = head - (head % 8);
+  const acrossMm = profile.printDirection === "left" ? stock.heightMm : stock.widthMm;
+  const feedMm = profile.printDirection === "left" ? stock.widthMm : stock.heightMm;
+  const bounds = profile.mediaBounds;
+  if (
+    bounds &&
+    (acrossMm < bounds.minWidth || acrossMm > bounds.maxWidth || feedMm < bounds.minHeight || feedMm > bounds.maxHeight)
+  )
+    return;
+  if (!bounds && profile.printheadPixels && head > profile.printheadPixels) return;
+  const printable = profile.printheadPixels ? Math.min(head, profile.printheadPixels) : head;
+  const aligned = printable - (printable % 8);
   if (aligned < 8 || width > 10000 || height > 10000) return;
   return {
     ...stock,
@@ -77,7 +106,22 @@ export function stockFromSize(stock: StockSize, profile: PrinterProfile): Detect
       width: profile.printDirection === "top" ? aligned : width,
       height: profile.printDirection === "left" ? aligned : height,
     },
+    ...(printable < head ? { printableAreaLimited: true } : {}),
   };
+}
+
+export function availableStockPresets(profile: PrinterProfile | undefined) {
+  if (!profile) return [];
+  return stockSizes.flatMap((stock) => {
+    const projected = stockFromSize(stock, profile);
+    return projected ? [{ ...stock, projected }] : [];
+  });
+}
+
+export function printableAreaNotice(stock: DetectedStock): string | undefined {
+  if (!stock.printableAreaLimited) return;
+  const dpmm = stock.dpi === 203 ? 8 : stock.dpi / 25.4;
+  return `${stock.widthMm} × ${stock.heightMm} mm roll · Printable canvas ${(stock.size.width / dpmm).toFixed(1)} × ${(stock.size.height / dpmm).toFixed(1)} mm. The roll is wider than the printhead; edge margins cannot be printed. The canvas shows the printable area, not the full label.`;
 }
 
 export function detectedStock(
@@ -113,8 +157,19 @@ export function detectedStock(
   };
   const head = pixels(paper.paperWidthPixel, widthMm!);
   const length = pixels(paper.paperHeightPixel, heightMm!);
-  if (head === undefined || length === undefined || head > profile.printheadPixels || length > 10000) return;
-  const aligned = head - (head % 8);
+  if (head === undefined || length === undefined || length > 10000) return;
+  const bounds = profile.mediaBounds;
+  if (
+    bounds &&
+    (widthMm! < bounds.minWidth ||
+      widthMm! > bounds.maxWidth ||
+      heightMm! < bounds.minHeight ||
+      heightMm! > bounds.maxHeight)
+  )
+    return;
+  if (!bounds && head > profile.printheadPixels) return;
+  const printable = Math.min(head, profile.printheadPixels);
+  const aligned = printable - (printable % 8);
   if (aligned < 8) return;
   const left = profile.printDirection === "left";
   // The protocol reports head-width × feed-length, not the editor's reading orientation.
@@ -125,6 +180,7 @@ export function detectedStock(
     dpi: profile.dpi,
     printDirection: profile.printDirection,
     size: { width: left ? length : aligned, height: left ? aligned : length },
+    ...(printable < head ? { printableAreaLimited: true } : {}),
     labelType:
       Object.values(LabelType).includes(paper.paperType!) && paper.paperType !== LabelType.Invalid
         ? paper.paperType

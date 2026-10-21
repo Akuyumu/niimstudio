@@ -126,6 +126,19 @@
     align-items: center;
     gap: 14px;
   }
+  .studio-header-actions .btn,
+  .studio-header-actions .input-group-text {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 34px;
+    white-space: nowrap;
+  }
+  .studio-header-actions .mdi {
+    font-size: 16px;
+    vertical-align: middle;
+  }
   .studio-stock-button {
     display: inline-flex;
     align-items: center;
@@ -206,10 +219,6 @@
     align-items: flex-end;
     flex-direction: column;
     gap: 8px;
-  }
-  .studio-reconnect-status {
-    font-size: 10px;
-    color: var(--bs-secondary-color);
   }
   .image-editor {
     display: flex;
@@ -329,7 +338,9 @@
     text-align: center;
   }
   .studio-formatting .font-family-picker {
-    width: 165px;
+    flex: 1 1 280px;
+    width: auto;
+    min-width: min(280px, 100%);
     margin-right: 5px;
   }
   .studio-selection-hint {

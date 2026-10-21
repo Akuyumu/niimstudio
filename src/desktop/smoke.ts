@@ -143,6 +143,8 @@ export async function runEditorSmoke(context: {
     selectedText?.get("fontWeight") === "bold" &&
     selectedText?.get("underline") === true &&
     selectedText?.get("textAlign") === "center";
+  const displayResults = await (await import("$/desktop/smoke_display")).runDisplaySmoke(canvas);
+  const displayWorks = Object.values(displayResults).every(Boolean);
   canvas.remove(selectedText!);
   const codeChecks = await runCodeSmoke(canvas);
   const { artifacts, ...codeResults } = codeChecks;
@@ -206,6 +208,7 @@ export async function runEditorSmoke(context: {
       searchWorks &&
       templateSaveWorks &&
       formattingWorks &&
+      displayWorks &&
       codesWork &&
       deviceCancellationSilent &&
       connectionFailureHelpful &&
@@ -230,6 +233,7 @@ export async function runEditorSmoke(context: {
     searchWorks,
     templateSaveWorks,
     formattingWorks,
+    ...displayResults,
     ...codeResults,
     deviceCancellationSilent,
     connectionFailureHelpful,

@@ -7,6 +7,8 @@ import {
   setVerifiedSound,
   sleepModes,
   offeredSleepModes,
+  visiblePrinterSettings,
+  SettingsConfirmationError,
 } from "../src/desktop/printer_settings.ts";
 import { readMedia } from "../src/desktop/media_reads.ts";
 
@@ -62,6 +64,48 @@ test("sound writes require a matching read-back", async () => {
   assert.deepEqual(fake.writes, [[SoundSettingsItemType.PowerSound, false]]);
   fake.isSoundEnabled = async () => true;
   await assert.rejects(setVerifiedSound(fake, SoundSettingsItemType.PowerSound, false), /did not confirm/);
+});
+test("unknown or unreported settings are hidden, not presented as disabled/off", async () => {
+  const fake = protocol();
+  fake.isSoundEnabled = async () => undefined as unknown as boolean;
+  fake.getAutoShutDownTime = async () => 255;
+  const snapshot = await readPrinterSettings(fake);
+  assert.deepEqual(visiblePrinterSettings(snapshot), []);
+  assert.equal(snapshot.errors.length, 3);
+  assert.deepEqual(visiblePrinterSettings({ powerSound: false, sleepMode: 4, errors: [] }, { min: 1, max: 3 }), [
+    "powerSound",
+  ]);
+});
+test("read-back mismatch carries the actual value, not a stale or requested value", async () => {
+  const fake = protocol();
+  fake.getAutoShutDownTime = async () => 2;
+  await assert.rejects(
+    setVerifiedSleep(fake, 4),
+    (error: unknown) =>
+      error instanceof SettingsConfirmationError &&
+      error.observed === 2 &&
+      /Requested mode 4; printer reports mode 2/.test(error.message),
+  );
+});
+test("write/read transport failure is explicitly unconfirmed with an unknown current value", async () => {
+  for (const phase of ["write", "read"]) {
+    const fake = protocol();
+    if (phase === "write")
+      fake.setSoundEnabled = async () => {
+        throw new Error("offline");
+      };
+    else
+      fake.isSoundEnabled = async () => {
+        throw new Error("timeout");
+      };
+    await assert.rejects(
+      setVerifiedSound(fake, SoundSettingsItemType.PowerSound, false),
+      (error: unknown) =>
+        error instanceof SettingsConfirmationError &&
+        error.observed === undefined &&
+        /not confirmed.*current value is unknown/.test(error.message),
+    );
+  }
 });
 test("sleep uses documented mode codes and never invents a disable code", async () => {
   const fake = protocol();

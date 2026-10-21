@@ -39,7 +39,7 @@
   import { FileUtils } from "$/utils/file_utils";
   import AppModal from "$/components/basic/AppModal.svelte";
   import { validatePrintJob } from "$/utils/print_validation";
-  import { detectedStock, printerProfile, stockMatches } from "$/desktop/media";
+  import { detectedStock, printerProfile, stockMatches, printableAreaNotice } from "$/desktop/media";
 
   interface Props {
     labelProps: LabelProps;
@@ -84,6 +84,7 @@
   let offsetWarning = $state<string>("");
   let currentPrintTask: AbstractPrintTask | undefined;
   let savedProps = $state<PreviewProps>({});
+  let advancedOpen = $state(false);
   let modalRef: AppModal;
   const automaticStock = $derived(
     isNative && $connectionState === "connected"
@@ -160,7 +161,7 @@
       copies: quantity,
       pages: pagesTotal,
       density,
-      printheadPixels: $printerMeta?.printheadPixels,
+      printheadPixels: isNative ? profile?.printheadPixels : $printerMeta?.printheadPixels,
       densityMin: $printerMeta?.densityMin,
       densityMax: $printerMeta?.densityMax,
     });
@@ -292,10 +293,13 @@
     }
 
     if ($printerMeta !== undefined) {
+      const headLimit = isNative
+        ? printerProfile($printerMeta, $printerInfo)?.printheadPixels
+        : $printerMeta.printheadPixels;
       const headSize = labelProps.printDirection == "left" ? previewCanvas.height : previewCanvas.width;
-      if (headSize > $printerMeta.printheadPixels) {
+      if (headLimit !== undefined && headSize > headLimit) {
         offsetWarning += $tr("params.label.warning.width") + " ";
-        offsetWarning += `(${headSize} > ${$printerMeta.printheadPixels})`;
+        offsetWarning += `(${headSize} > ${headLimit})`;
         offsetWarning += "\n";
       }
     }
@@ -345,7 +349,7 @@
       if (saved.density !== undefined) density = saved.density;
       if (saved.speed !== undefined) speed = saved.speed;
       if (saved.labelType !== undefined) labelType = saved.labelType;
-      if (saved.printTaskName !== undefined) printTaskName = saved.printTaskName;
+      if (!isNative && saved.printTaskName !== undefined) printTaskName = saved.printTaskName;
       if (saved.offset !== undefined) offset = saved.offset;
     } catch (e) {
       Toasts.zodErrors(e, "Preview parameters load error:");
@@ -495,6 +499,11 @@
   </div>
 
   <div class="text-center">
+    {#if isNative && (automaticStock ?? $confirmedStock)?.printableAreaLimited}
+      <p class="alert alert-info small" data-testid="preview-printable-area">
+        {printableAreaNotice((automaticStock ?? $confirmedStock)!)}
+      </p>
+    {/if}
     {#if pagesTotal > 1}<div>Page {currentPage + 1} / {pagesTotal}</div>{/if}
 
     {#if printState === "printing"}
@@ -521,245 +530,335 @@
   </div>
 
   {#snippet footer()}
-    <div class="input-group input-group-sm">
-      <span class="input-group-text">{$tr("preview.postprocess")}</span>
-
-      <select
-        class="form-select"
-        bind:value={postProcessType}
-        onchange={() => updateSavedProp("postProcess", postProcessType, true)}>
-        <option value="threshold">{$tr("preview.postprocess.threshold")}</option>
-        <option value="threshold_rb" disabled={!taskHasCap(TaskCap.SupportDoubleColor)}
-          >{$tr("preview.postprocess.threshold.red")}</option>
-        <option value="dither">{$tr("preview.postprocess.atkinson")}</option>
-        <option value="bayer2">{$tr("preview.postprocess.bayer")} 2x2</option>
-        <option value="bayer4">{$tr("preview.postprocess.bayer")} 4x4</option>
-        <option value="bayer8">{$tr("preview.postprocess.bayer")} 8x8</option>
-        <option value="floyd_steinberg">{$tr("preview.postprocess.floyd_steinberg")}</option>
-        <option value="jjn">{$tr("preview.postprocess.jjn")}</option>
-        <option value="stucki">{$tr("preview.postprocess.stucki")}</option>
-      </select>
-
-      <ParamLockButton
-        propName="postProcess"
-        value={postProcessType}
-        savedValue={savedProps.postProcess}
-        onClick={toggleSavedProp} />
-
-      <button
-        class="btn btn-sm {postProcessInvert ? 'btn-secondary' : 'btn-outline-secondary'}"
-        onclick={() => {
-          postProcessInvert = !postProcessInvert;
-          updatePreview();
-        }}>
-        <MdIcon icon="invert_colors" />
-      </button>
-
-      <button
-        class="btn btn-sm {postProcessMirror ? 'btn-secondary' : 'btn-outline-secondary'}"
-        onclick={() => {
-          postProcessMirror = !postProcessMirror;
-          updatePreview();
-        }}>
-        <MdIcon icon="flip" />
-      </button>
-    </div>
-
-    {#if !(postProcessType && ["bayer2", "bayer4", "bayer8"].includes(postProcessType))}
+    {#snippet advancedControls()}
       <div class="input-group input-group-sm">
-        <span class="input-group-text">{$tr("preview.threshold")}</span>
+        <span
+          class="input-group-text"
+          title="Converts colors and photos into the black dots a thermal printer can print. Threshold is usually best for text and barcodes; dot patterns can help photos."
+          >{isNative ? "Image style" : $tr("preview.postprocess")}</span>
 
-        <input
-          type="range"
-          id="threshold"
-          class="form-range"
-          min="1"
-          max="255"
-          bind:value={thresholdValue}
-          onchange={() => updateSavedProp("threshold", thresholdValue, true)} />
-        <span class="input-group-text">{thresholdValue}</span>
+        <select
+          class="form-select"
+          aria-label="Image style"
+          title="Threshold keeps text and codes clean. Dithering uses tiny black dots to suggest gray shades in photos. This changes the printed image, not your saved artwork."
+          bind:value={postProcessType}
+          onchange={() => updateSavedProp("postProcess", postProcessType, true)}>
+          <option value="threshold">{$tr("preview.postprocess.threshold")}</option>
+          {#if !isNative || taskHasCap(TaskCap.SupportDoubleColor)}<option
+              value="threshold_rb"
+              disabled={!taskHasCap(TaskCap.SupportDoubleColor)}>{$tr("preview.postprocess.threshold.red")}</option
+            >{/if}
+          <option value="dither">{$tr("preview.postprocess.atkinson")}</option>
+          <option value="bayer2">{$tr("preview.postprocess.bayer")} 2x2</option>
+          <option value="bayer4">{$tr("preview.postprocess.bayer")} 4x4</option>
+          <option value="bayer8">{$tr("preview.postprocess.bayer")} 8x8</option>
+          <option value="floyd_steinberg">{$tr("preview.postprocess.floyd_steinberg")}</option>
+          <option value="jjn">{$tr("preview.postprocess.jjn")}</option>
+          <option value="stucki">{$tr("preview.postprocess.stucki")}</option>
+        </select>
 
         <ParamLockButton
-          propName="threshold"
-          value={thresholdValue}
-          savedValue={savedProps.threshold}
-          onClick={toggleSavedProp} />
-      </div>
-    {/if}
-
-    {#if postProcessType === "floyd_steinberg" || postProcessType === "jjn" || postProcessType === "stucki" || postProcessType === "dither"}
-      <div class="input-group input-group-sm">
-        <span class="input-group-text">{$tr("preview.strength")}</span>
-
-        <input
-          type="range"
-          id="strength"
-          class="form-range"
-          min="0"
-          max="1.5"
-          step="0.1"
-          bind:value={strengthValue}
-          onchange={() => updateSavedProp("strength", strengthValue, true)} />
-        <span class="input-group-text">{strengthValue.toFixed(1)}</span>
-
-        <ParamLockButton
-          propName="strength"
-          value={strengthValue}
-          savedValue={savedProps.strength}
+          propName="postProcess"
+          value={postProcessType}
+          savedValue={savedProps.postProcess}
           onClick={toggleSavedProp} />
 
         <button
-          class="btn btn-sm {serpentineValue ? 'btn-secondary' : 'btn-outline-secondary'}"
-          title={$tr("preview.serpentine")}
+          class="btn btn-sm {postProcessInvert ? 'btn-secondary' : 'btn-outline-secondary'}"
+          aria-label="Invert black and white"
+          title="Swaps black and white. Use for a negative image; large black backgrounds use more of the printhead's heat."
           onclick={() => {
-            serpentineValue = !serpentineValue;
-            updateSavedProp("serpentine", serpentineValue, true);
+            postProcessInvert = !postProcessInvert;
+            updatePreview();
           }}>
-          <MdIcon icon="swap_vert" />
+          <MdIcon icon="invert_colors" />
+        </button>
+
+        <button
+          class="btn btn-sm {postProcessMirror ? 'btn-secondary' : 'btn-outline-secondary'}"
+          aria-label="Mirror image"
+          title="Flips the print left to right. Usually leave off; mirrored text reads backwards."
+          onclick={() => {
+            postProcessMirror = !postProcessMirror;
+            updatePreview();
+          }}>
+          <MdIcon icon="flip" />
         </button>
       </div>
-    {/if}
 
-    {#if postProcessType === "threshold_rb"}
-      <div class="input-group input-group-sm">
-        <span class="input-group-text">{$tr("preview.threshold.red")}</span>
+      {#if !(postProcessType && ["bayer2", "bayer4", "bayer8"].includes(postProcessType))}
+        <div class="input-group input-group-sm">
+          <span
+            class="input-group-text"
+            title="The brightness cutoff between black and white. Increase it to keep more pale details; decrease it for a lighter, cleaner result."
+            >{isNative ? "Black/white cutoff" : $tr("preview.threshold")}</span>
 
-        <input
-          type="range"
-          id="thresholdRed"
-          class="form-range"
-          min="1"
-          max="255"
-          bind:value={thresholdValueRed}
-          onchange={() => updateSavedProp("thresholdRed", thresholdValueRed, true)} />
-        <span class="input-group-text">{thresholdValueRed}</span>
+          <input
+            type="range"
+            id="threshold"
+            aria-label="Black and white cutoff"
+            title="Higher values turn more gray pixels black. Lower values remove pale details. Watch the preview before printing."
+            class="form-range"
+            min="1"
+            max="255"
+            bind:value={thresholdValue}
+            onchange={() => updateSavedProp("threshold", thresholdValue, true)} />
+          <span class="input-group-text">{thresholdValue}</span>
 
-        <ParamLockButton
-          propName="thresholdRed"
-          value={thresholdValueRed}
-          savedValue={savedProps.thresholdRed}
-          onClick={toggleSavedProp} />
-      </div>
-    {/if}
+          <ParamLockButton
+            propName="threshold"
+            value={thresholdValue}
+            savedValue={savedProps.threshold}
+            onClick={toggleSavedProp} />
+        </div>
+      {/if}
 
-    <div class="input-group flex-nowrap input-group-sm">
-      <span class="input-group-text">{$tr("preview.copies")}</span>
-      <input
-        class="form-control"
-        type="number"
-        min="1"
-        bind:value={quantity}
-        onchange={() => updateSavedProp("quantity", quantity)} />
-      <ParamLockButton
-        propName="quantity"
-        value={quantity}
-        savedValue={savedProps.quantity}
-        onClick={toggleSavedProp} />
-    </div>
+      {#if postProcessType === "floyd_steinberg" || postProcessType === "jjn" || postProcessType === "stucki" || postProcessType === "dither"}
+        <div class="input-group input-group-sm">
+          <span
+            class="input-group-text"
+            title="Controls how strongly the photo's gray shades are represented by dot patterns. Higher values can preserve more detail but may look grainier."
+            >{isNative ? "Photo detail" : $tr("preview.strength")}</span>
 
-    <div class="input-group flex-nowrap input-group-sm">
-      <span class="input-group-text">{$tr("preview.density")}</span>
-      <input
-        class="form-control"
-        type="number"
-        min={$printerMeta?.densityMin ?? 1}
-        max={$printerMeta?.densityMax ?? 20}
-        bind:value={density}
-        onchange={() => updateSavedProp("density", density)} />
-      <ParamLockButton propName="density" value={density} savedValue={savedProps.density} onClick={toggleSavedProp} />
-    </div>
+          <input
+            type="range"
+            id="strength"
+            aria-label="Photo detail"
+            title="Adjust the strength of photo dot patterns. This has no effect on printer speed or resolution."
+            class="form-range"
+            min="0"
+            max="1.5"
+            step="0.1"
+            bind:value={strengthValue}
+            onchange={() => updateSavedProp("strength", strengthValue, true)} />
+          <span class="input-group-text">{strengthValue.toFixed(1)}</span>
 
-    {#if printTaskName === "D110M_V4"}
+          <ParamLockButton
+            propName="strength"
+            value={strengthValue}
+            savedValue={savedProps.strength}
+            onClick={toggleSavedProp} />
+
+          <button
+            class="btn btn-sm {serpentineValue ? 'btn-secondary' : 'btn-outline-secondary'}"
+            aria-label="Alternate dot-pattern rows"
+            title="Alternates the direction used to calculate each row of photo dots. This can reduce stripes in dithered photos; it does not change the paper feed direction."
+            onclick={() => {
+              serpentineValue = !serpentineValue;
+              updateSavedProp("serpentine", serpentineValue, true);
+            }}>
+            <MdIcon icon="swap_vert" />
+          </button>
+        </div>
+      {/if}
+
+      {#if postProcessType === "threshold_rb"}
+        <div class="input-group input-group-sm">
+          <span
+            class="input-group-text"
+            title="Controls which pixels print red. Requires a supported two-color printer and red/black label stock."
+            >{$tr("preview.threshold.red")}</span>
+
+          <input
+            type="range"
+            id="thresholdRed"
+            aria-label="Red color cutoff"
+            title="Selects how much red detail is included on red/black label stock. Ordinary white labels cannot print red."
+            class="form-range"
+            min="1"
+            max="255"
+            bind:value={thresholdValueRed}
+            onchange={() => updateSavedProp("thresholdRed", thresholdValueRed, true)} />
+          <span class="input-group-text">{thresholdValueRed}</span>
+
+          <ParamLockButton
+            propName="thresholdRed"
+            value={thresholdValueRed}
+            savedValue={savedProps.thresholdRed}
+            onClick={toggleSavedProp} />
+        </div>
+      {/if}
+
+      {#if !isNative}
+        <div class="input-group flex-nowrap input-group-sm">
+          <span class="input-group-text">{$tr("preview.copies")}</span>
+          <input
+            class="form-control"
+            type="number"
+            min="1"
+            bind:value={quantity}
+            onchange={() => updateSavedProp("quantity", quantity)} />
+          <ParamLockButton
+            propName="quantity"
+            value={quantity}
+            savedValue={savedProps.quantity}
+            onClick={toggleSavedProp} />
+        </div>
+      {/if}
+
       <div class="input-group flex-nowrap input-group-sm">
-        <span class="input-group-text">{$tr("preview.speed")}</span>
-        <select class="form-select" bind:value={speed} onchange={() => updateSavedProp("speed", speed, true)}>
-          <option value={0}>{$tr("preview.speed.0")}</option>
-          <option value={1}>{$tr("preview.speed.1")}</option>
-        </select>
-
-        <ParamLockButton propName="speed" value={speed} savedValue={savedProps.speed} onClick={toggleSavedProp} />
+        <span
+          class="input-group-text"
+          title="Changes the printer's heat level, making marks lighter or darker. Higher is not always sharper; too much heat can blur small letters."
+          >{isNative ? "Print darkness" : $tr("preview.density")}</span>
+        <input
+          class="form-control"
+          type="number"
+          min={$printerMeta?.densityMin ?? 1}
+          max={$printerMeta?.densityMax ?? 20}
+          aria-label="Print darkness"
+          title="Increase slightly if prints are faint; decrease if letters look thick or smudged. The default comes from this printer model."
+          bind:value={density}
+          onchange={() => updateSavedProp("density", density)} />
+        <ParamLockButton propName="density" value={density} savedValue={savedProps.density} onClick={toggleSavedProp} />
       </div>
-    {/if}
 
-    <div class="input-group input-group-sm">
-      <span class="input-group-text">{$tr("preview.label_type")}</span>
-      {#if automaticStock?.labelType !== undefined}
-        <span class="input-group-text flex-grow-1"
-          >{$tr(labelTypeTranslationKey(LabelType[automaticStock.labelType]))} · Auto</span>
-      {:else}
-        <select class="form-select" bind:value={labelType} onchange={() => updateSavedProp("labelType", labelType)}>
-          {#each Object.values(LabelType) as lt (lt)}
-            {#if typeof lt !== "string"}
-              <option value={lt}>
-                {#if $printerMeta?.paperTypes.includes(lt)}✔{/if}
-                {$tr(labelTypeTranslationKey(LabelType[lt]))}
+      {#if printTaskName === "D110M_V4"}
+        <div class="input-group flex-nowrap input-group-sm">
+          <span
+            class="input-group-text"
+            title="How quickly the label moves through the printer. Slower printing may help detailed images."
+            >{$tr("preview.speed")}</span>
+          <select
+            class="form-select"
+            aria-label="Print speed"
+            title="Normal is the usual choice. A slower setting can help difficult or detailed labels; it does not increase the printer's resolution."
+            bind:value={speed}
+            onchange={() => updateSavedProp("speed", speed, true)}>
+            <option value={0}>{$tr("preview.speed.0")}</option>
+            <option value={1}>{$tr("preview.speed.1")}</option>
+          </select>
+
+          <ParamLockButton propName="speed" value={speed} savedValue={savedProps.speed} onClick={toggleSavedProp} />
+        </div>
+      {/if}
+
+      <div class="input-group input-group-sm">
+        <span
+          class="input-group-text"
+          title="How the printer finds the next label: gaps, black marks, or continuous tape. This must match the physical roll. The app uses the reported type when available."
+          >{$tr("preview.label_type")}</span>
+        {#if automaticStock?.labelType !== undefined}
+          <span class="input-group-text flex-grow-1"
+            >{$tr(labelTypeTranslationKey(LabelType[automaticStock.labelType]))} · Auto</span>
+        {:else}
+          <select
+            class="form-select"
+            aria-label="Label type"
+            title="Choose the physical roll material, not a design style. Most separate stickers use With gaps. A wrong type may misalign the feed."
+            bind:value={labelType}
+            onchange={() => updateSavedProp("labelType", labelType)}>
+            {#each Object.values(LabelType) as lt (lt)}
+              {#if typeof lt !== "string" && (!isNative || (lt !== LabelType.Invalid && $printerMeta?.paperTypes.includes(lt)))}
+                <option value={lt}>
+                  {#if $printerMeta?.paperTypes.includes(lt)}✔{/if}
+                  {$tr(labelTypeTranslationKey(LabelType[lt]))}
+                </option>
+              {/if}
+            {/each}
+          </select>
+
+          <ParamLockButton
+            propName="labelType"
+            value={labelType}
+            savedValue={savedProps.labelType}
+            onClick={toggleSavedProp} />
+        {/if}
+      </div>
+
+      {#if !isNative}
+        <div class="input-group input-group-sm">
+          <span class="input-group-text">{$tr("preview.print_task")}</span>
+          <select
+            class="form-select"
+            bind:value={printTaskName}
+            onchange={() => {
+              updateSavedProp("printTaskName", printTaskName);
+              if (!taskHasCap(TaskCap.SupportDoubleColor) && postProcessType === "threshold_rb") {
+                postProcessType = "threshold";
+                updatePreview();
+              }
+            }}>
+            {#each printTaskNames as name (name)}
+              <option value={name}>
+                {#if detectedPrintTaskName === name}✔{/if}
+                {name}
               </option>
-            {/if}
-          {/each}
+            {/each}
+          </select>
+
+          <ParamLockButton
+            propName="printTaskName"
+            value={printTaskName}
+            savedValue={savedProps.printTaskName}
+            onClick={toggleSavedProp} />
+        </div>
+      {/if}
+
+      <div class="input-group input-group-sm">
+        <span
+          class="input-group-text"
+          title="Moves the printed image a few pixels without moving objects in your saved design. Use only to correct a consistent alignment problem."
+          >{isNative ? "Position adjustment" : $tr("preview.offset")}</span>
+        {#if offsetWarning}
+          <span class="input-group-text text-warning" title={offsetWarning}><MdIcon icon="warning" /></span>
+        {/if}
+        <span class="input-group-text"><MdIcon icon="unfold_more" class="r-90" /></span>
+        <input
+          class="form-control"
+          type="number"
+          aria-label="Horizontal position adjustment"
+          title="Moves the image left or right, in printer pixels. Positive values move right; content pushed past an edge may be cut off."
+          bind:value={offset.x}
+          onchange={() => updateSavedProp("offset", offset, true)} />
+        <span class="input-group-text"><MdIcon icon="unfold_more" /></span>
+        <input
+          class="form-control"
+          type="number"
+          aria-label="Vertical position adjustment"
+          title="Moves the image up or down, in printer pixels. Positive values move down; content pushed past an edge may be cut off."
+          bind:value={offset.y}
+          onchange={() => updateSavedProp("offset", offset, true)} />
+        <select
+          class="form-select"
+          aria-label="Position adjustment boundary"
+          title="Inner keeps the current canvas size and can clip shifted edges. Outer adds blank space and may exceed the printer or label size; use with care."
+          bind:value={offset.offsetType}
+          onchange={() => updateSavedProp("offset", offset, true)}>
+          <option value="inner">{$tr("preview.offset.inner")}</option>
+          <option value="outer">{$tr("preview.offset.outer")}</option>
         </select>
 
-        <ParamLockButton
-          propName="labelType"
-          value={labelType}
-          savedValue={savedProps.labelType}
-          onClick={toggleSavedProp} />
-      {/if}
-    </div>
+        <ParamLockButton propName="offset" value={offset} savedValue={savedProps.offset} onClick={toggleSavedProp} />
+      </div>
+    {/snippet}
 
-    <div class="input-group input-group-sm">
-      <span class="input-group-text">{$tr("preview.print_task")}</span>
-      <select
-        class="form-select"
-        bind:value={printTaskName}
-        onchange={() => {
-          updateSavedProp("printTaskName", printTaskName);
-          if (!taskHasCap(TaskCap.SupportDoubleColor) && postProcessType === "threshold_rb") {
-            postProcessType = "threshold";
-            updatePreview();
-          }
-        }}>
-        {#each printTaskNames as name (name)}
-          <option value={name}>
-            {#if detectedPrintTaskName === name}✔{/if}
-            {name}
-          </option>
-        {/each}
-      </select>
-
-      <ParamLockButton
-        propName="printTaskName"
-        value={printTaskName}
-        savedValue={savedProps.printTaskName}
-        onClick={toggleSavedProp} />
-    </div>
-
-    <div class="input-group input-group-sm">
-      <span class="input-group-text">{$tr("preview.offset")}</span>
-      {#if offsetWarning}
-        <span class="input-group-text text-warning" title={offsetWarning}><MdIcon icon="warning" /></span>
-      {/if}
-      <span class="input-group-text"><MdIcon icon="unfold_more" class="r-90" /></span>
-      <input
-        class="form-control"
-        type="number"
-        bind:value={offset.x}
-        onchange={() => updateSavedProp("offset", offset, true)} />
-      <span class="input-group-text"><MdIcon icon="unfold_more" /></span>
-      <input
-        class="form-control"
-        type="number"
-        bind:value={offset.y}
-        onchange={() => updateSavedProp("offset", offset, true)} />
-      <select
-        class="form-select"
-        bind:value={offset.offsetType}
-        onchange={() => updateSavedProp("offset", offset, true)}>
-        <option value="inner">{$tr("preview.offset.inner")}</option>
-        <option value="outer">{$tr("preview.offset.outer")}</option>
-      </select>
-
-      <ParamLockButton propName="offset" value={offset} savedValue={savedProps.offset} onClick={toggleSavedProp} />
-    </div>
+    {#if isNative}
+      <label class="input-group input-group-sm" data-testid="print-copies">
+        <span class="input-group-text">Copies</span>
+        <input
+          class="form-control"
+          aria-label="Copies"
+          title="How many identical copies to print. For multiple designs, this applies to each design."
+          type="number"
+          min="1"
+          step="1"
+          bind:value={quantity}
+          disabled={printState !== "idle"} />
+      </label>
+      <details class="studio-print-advanced" data-testid="print-advanced" bind:open={advancedOpen}>
+        <summary>Advanced</summary>
+        <p class="small text-secondary mt-2">
+          Optional adjustments for images, print darkness and alignment. Usually you can leave these alone. Printer
+          protocol is selected automatically.
+        </p>
+        {#if advancedOpen}<fieldset disabled={printState !== "idle"} class="studio-print-advanced-controls">
+            {@render advancedControls()}
+          </fieldset>{/if}
+      </details>
+    {:else}
+      {@render advancedControls()}
+    {/if}
 
     <button type="button" class="btn btn-secondary" onclick={() => modalRef.hide()}>{$tr("preview.close")}</button>
 
@@ -773,13 +872,15 @@
       </button>
     {/if}
 
-    <button
-      type="button"
-      class="btn btn-secondary"
-      title={$tr("preview.print.system")}
-      onclick={onPrintOnSystemPrinter}>
-      <MdIcon icon="print" />
-    </button>
+    {#if !isNative}
+      <button
+        type="button"
+        class="btn btn-secondary"
+        title={$tr("preview.print.system")}
+        onclick={onPrintOnSystemPrinter}>
+        <MdIcon icon="print" />
+      </button>
+    {/if}
 
     <button
       type="button"
@@ -822,5 +923,14 @@
     width: 1%;
     height: unset;
     padding: 0 1rem;
+  }
+  .studio-print-advanced {
+    width: 100%;
+    font-size: 12px;
+  }
+  .studio-print-advanced-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
 </style>

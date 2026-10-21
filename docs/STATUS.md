@@ -16,7 +16,9 @@
 - Top-right Settings replaces the native printer dropdown's everyday controls.
   Sound and idle timeout use existing NiimBlueLib commands with read-back
   verification. Opening settings changes no printer values; controls lock during
-  printing and unknown settings stay unavailable.
+   printing and unknown settings are hidden. Small inline confirmations replace
+   duplicate success banners; temporary app-preference notices expire after 3.5 s.
+   Failed read-back shows the actual value, or hides an unknown value until refresh.
 - Sleep mode 4 means never **or** 60 minutes depending on firmware. This is explicit
   in the UI, not claimed as a verified B1 Pro disable-sleep setting. Sound/sleep
   writes have synthetic verification only.
@@ -45,8 +47,33 @@
 - Tests cover classic filtering, preserved failure messages, retry/cancel races,
   targeted tips, and the visible editor error/dismissal. Two authorized BLE-only
   diagnostics timed out before GATT discovery, with no pairing/print commands.
-  The user confirms USB connection works; Bluetooth and printing remain unverified.
-  The working USB session was not interrupted for more diagnostics.
+  Those early diagnostics were superseded by the real connection tests below.
+
+## Follow-up BLE validation and UI feedback (development, not released)
+
+- A fresh-advertisement/native link probe observed `le-connection-abort-by-local`;
+  an independent Bleak 3.0.2 probe successfully resolved services and notifications
+  without pairing. Baseline native transport passed two of three handshakes.
+- Added a fresh LE discovery window and one bounded transient retry, with shared
+  discovery ownership, progress and preferred NiimBlue characteristic selection.
+  The updated native transport passed **3/3 consecutive real B1 Pro cycles**:
+  connect, pinned-library handshake, three heartbeat reads, disconnect. Firmware
+  2.12/protocol 5 reported 576 head pixels. No print/settings-write/calibration/
+  pairing/reset commands were sent. USB was untouched. Details: HARDWARE.md.
+- The stock picker now distinguishes physical media width from printable width.
+  B1 Pro 50×30/50×50 mm presets are available with explicit edge-margin notices;
+  incompatible presets are hidden. Reported head width takes precedence over the
+  static fallback. No speculative SKU or model-based loaded-roll size is inferred.
+- The user saw a real 50×24 mm size response for an identified 50×30 mm roll.
+  That is evidence of a response, not verified geometry; the gap/height discrepancy
+  still needs the actual paper-info fields. A conflicting report must not silently
+  replace an explicitly chosen physical size, even on a blank canvas.
+- Native preview shows Copies and Print; technical controls are collapsed under
+  Advanced with plain-language hover descriptions. Protocol selection is automatic.
+  Header Devices uses a compact printer icon; reconnect countdowns are tooltip-only.
+- Zoom redraws the canvas at display resolution rather than enlarging its bitmap;
+  tests verify pointer alignment and byte-identical unzoomed export pixels. The
+  font picker grows with the formatting bar, instead of clipping the font name.
 
 ## v0.1.3 patch
 
@@ -119,7 +146,7 @@
 
 ## Automated verification
 
-- 90 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
+- 97 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
   fragmentation, service discovery, notifications, and cleanup; mocked pairing
   agents/prompts; palette safety/GTK compositing, bridge validation, and device history.
 - Installer tests cover checksum failure, traversal/links, update rollback,
@@ -129,7 +156,7 @@
 - Ubuntu CI exercises the actual installed native app and real Flatpak GUI on
   x86-64 and ARM64. Exported Flatpak bundles are installed/reinstalled with a
   retained-data fixture before publishing, not merely built as manifests.
-- 34 Node tests: settings/read-back, media reads, saved-roll identity, connection
+- 40 Node tests: settings/read-back, media reads, saved-roll identity, connection
   troubleshooting tips, CSV safety, print validation, undo, reconnect, every printable
   Code 128 character, EAN-13, cancellation, media validation, head-width/rotation
   mapping, resolution priority, and safe preset conversion.
@@ -160,7 +187,9 @@
 ## Still needs real hardware / user acceptance
 
 A B1 Pro's classic/BLE advertisements have been observed and the user confirms
-USB connection works. Bluetooth connection and physical printing are not confirmed.
+USB connection works. Agent-run BLE link/handshake/heartbeat cycles now pass as
+described above; user acceptance through the restarted GUI and physical printing
+are still outstanding.
 USB/BLE printing, BlueZ pairing prompts with real hardware, battery/RFID accuracy
 and automatic sizing from real media reports,
 reconnect behavior under printer faults, and representative real-media results

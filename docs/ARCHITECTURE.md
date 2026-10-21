@@ -41,6 +41,20 @@ model/product/material identity; private tag/roll serials are not keys. A parsed
 conflicting paper report cannot be bypassed by a remembered size. These features
 are development work until accepted and released.
 
+Controls are rendered only for readable/recognized values, with sleep options
+filtered by an interpretable reported capability range. A read does not guarantee
+writability: every write needs read-back, with actual mismatched values or unknown
+state surfaced honestly. Success feedback is inline; transient preference notices
+expire. Native print preview renders only Copies by default and mounts technical
+controls in a collapsed Advanced section with descriptive titles; it never exposes
+a native protocol-task selector. The browser-reference flow remains separate.
+
+`CustomCanvas.virtualZoom` keeps logical dimensions and object positions unchanged,
+but refreshes the backing store through `getRetinaScaling` at display zoom × DPR
+(bounded for memory). Fabric's unzoomed export path disables retina scaling, so
+the print raster and exports stay at label resolution. GUI tests compare actual
+export pixels and pointer hit-testing across zoom levels.
+
 Launch and quit are deliberately staged. `scripts/niimstudio` selects a system
 interpreter and delegates to `scripts/launch.py`, which chooses the system WebKit or
 the optional extracted runtime without importing GI on the launcher path. That
@@ -74,7 +88,10 @@ templates; rectangular and circular presets remain available in Label stock.
 `src/desktop/media.ts` validates reported media and projects presets at the known
 printer resolution. `StockSetup.svelte` replaces raw desktop size/DPI/direction
 controls: reported media configures an untouched canvas; existing artwork gets a
-confirmation. Non-reporting stock uses fixed-size cards, with head-width filtering.
+confirmation. Non-reporting stock uses fixed-size cards. Known B1 Pro physical
+media limits (20–50 mm across the head) are separate from its printable head width;
+50 mm stock uses an explicitly labelled smaller printable canvas. Other printers
+without a documented physical-stock range retain conservative head-width filtering.
 Reported pixel dimensions take precedence when consistent with millimeters; head
 width maps to canvas height for left feed and width for top feed. Head pixels are
 byte-aligned. No product-code size database or speculative shape inference is used.
@@ -85,7 +102,10 @@ CSS rounding in Preview does not modify the underlying encoded image.
 1. The bundled editor requests a connection through a WebKit script handler.
 2. GTK displays the device chooser. Only a device explicitly selected there can
    be opened; JavaScript cannot submit arbitrary device paths.
-3. USB uses standard termios at 115200 baud. BLE uses BlueZ's D-Bus GATT APIs.
+3. USB uses standard termios at 115200 baud. BLE uses BlueZ's D-Bus GATT APIs,
+   refreshes LE discovery before connecting, and retries one local-abort/timeout
+   without pairing. Chooser/connection scans are refcounted on the app's bus;
+   only its last owner stops discovery or clears its temporary LE filter.
 4. `NativeNiimbotClient` subclasses NiimBlueLib's abstract client. All packet
    parsing, printer negotiation, RFID, heartbeat, image encoding, and print-task
    selection stay in the pinned upstream protocol library.

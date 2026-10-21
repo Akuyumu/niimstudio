@@ -14,6 +14,8 @@
     stockFromSize,
     stockMatches,
     stockSizes,
+    availableStockPresets,
+    printableAreaNotice,
     type DetectedStock,
   } from "./media";
 
@@ -58,13 +60,7 @@
       $rfidInfo.labelRfidInfo?.serialNumber,
     ]),
   );
-  let candidates = $derived(
-    stockSizes.map((stock) => ({
-      ...stock,
-      projected:
-        $connectionState === "connected" && !profile ? undefined : stockFromSize(stock, profile ?? offlineProfile),
-    })),
-  );
+  let candidates = $derived(availableStockPresets($connectionState === "connected" ? profile : offlineProfile));
   let chosen = $derived(
     selection && selectedSize === JSON.stringify(current.size) && (!selectedRoll || selectedRoll === rollIdentity)
       ? stockSizes.find((stock) => stock.id === selection)
@@ -142,7 +138,11 @@
       } else if (stockMatches(current, reported)) {
         applied = description(reported);
         confirmedStock.set({ ...reported, shape: current.shape ?? "rounded_rect" });
-      } else if (!hasArtwork()) apply(reported, detected ? "" : (chosen?.id ?? ""));
+      } else if (
+        !hasArtwork() &&
+        (!chosen || (chosen.widthMm === reported.widthMm && chosen.heightMm === reported.heightMm))
+      )
+        apply(reported, detected ? "" : (chosen?.id ?? ""));
       else shown = true;
     });
   });
@@ -166,6 +166,13 @@
     {:else if $rfidInfo.paperInfo && !$rfidInfo.paperInfo.valid}<p class="small text-secondary">
         The printer replied, but not with the extended label-dimensions format.
       </p>{/if}
+    {#if detected && $rfidInfo.paperInfo?.totalHeight !== undefined && $rfidInfo.paperInfo?.gapHeight !== undefined}
+      <p class="small text-secondary">
+        Reported feed length: {$rfidInfo.paperInfo.totalHeight} mm including a {$rfidInfo.paperInfo.gapHeight} mm gap. The
+        library subtracts that gap to get the displayed sticker height. If this differs from your measured sticker, check
+        the report before printing.
+      </p>
+    {/if}
     {#if rollKey && !detected && !remembered}<label class="small d-flex gap-2 mb-3"
         ><input type="checkbox" class="form-check-input" data-setting="remember-roll" bind:checked={rememberRoll} /> Remember
         my chosen size for this roll product on this printer</label
@@ -204,7 +211,18 @@
     bind:this={modal}>
     {#if error}<p class="alert alert-danger" role="alert">{error}</p>{/if}
     {#if proposed}
-      <p class="studio-stock-summary" data-testid="detected-stock">{description(proposed)}</p>
+      {#if detected && chosen && (chosen.widthMm !== detected.widthMm || chosen.heightMm !== detected.heightMm)}<p
+          class="alert alert-warning"
+          data-testid="stock-report-conflict">
+          You chose {chosen.widthMm} × {chosen.heightMm} mm, but the printer reports {detected.widthMm} × {detected.heightMm}
+          mm. Check the actual sticker and the reported gap before accepting a new size.
+        </p>{/if}
+      <p class="studio-stock-summary" class:text-success={!!detected || !!remembered} data-testid="detected-stock">
+        {description(proposed)}{detected ? " · Detected" : remembered ? " · Saved roll" : ""}
+      </p>
+      {#if printableAreaNotice(proposed)}<p class="alert alert-info small" data-testid="printable-area-notice">
+          {printableAreaNotice(proposed)}
+        </p>{/if}
       <p>
         {detected
           ? "The printer reports this stock."
@@ -236,18 +254,26 @@
       </p>
       <p class="text-secondary small">
         {profile
-          ? `${profile.dpi} DPI · Feed direction set by the printer`
+          ? `${$printerMeta?.model.replaceAll("_", " ")} · ${profile.dpi} DPI · Only presets within this printer's known limits are shown`
           : $connectionState === "connected"
             ? "The printer model could not be identified. Reconnect before choosing stock."
             : "Offline preview uses 203 DPI. Check the stock after connecting."}
       </p>
       {@render rollReadStatus()}
+      <details class="small mb-3" data-testid="roll-measure-help">
+        <summary>Not sure which roll you have?</summary>
+        <p class="mt-2">
+          Check the size on the box or inside the roll. Otherwise measure one sticker edge to edge with a ruler, not the
+          backing paper, gap between stickers, or roll diameter. A 5 cm × 3 cm sticker is 50 × 30 mm. The printer model
+          and RFID code alone do not identify the loaded size.
+        </p>
+      </details>
       <div class="studio-stock-grid">
         {#each candidates as stock (stock.id)}
           <button
             class="btn btn-secondary"
             data-stock-id={stock.id}
-            disabled={!stock.projected || blocked}
+            disabled={blocked}
             onclick={() => apply(stock.projected!, stock.id)}>
             {stock.widthMm} × {stock.heightMm} mm
             <span
@@ -256,12 +282,13 @@
                 : stock.shape === "rect"
                   ? "Square corners"
                   : "Rounded corners"}</span>
+            {#if stock.projected.printableAreaLimited}<span>With non-printable edge margins</span>{/if}
           </button>
         {/each}
       </div>
       <p class="text-secondary small mt-3">
-        Sizes too wide for this printer are unavailable. If your stock is not listed, do not choose a different size and
-        print.
+        Incompatible presets are hidden. This is a preset list, not every roll sold for this model. If your stock is not
+        listed, do not choose a different size and print.
       </p>
       {#if applied}<p class="small">Selected: {applied}{selection ? ` · ${selection}` : ""}</p>{/if}
     {/if}
