@@ -13,11 +13,24 @@ from pathlib import Path
 
 LATEST_URL = "https://api.github.com/repos/Akuyumu/niimstudio/releases/latest"
 VERSION = re.compile(r"v?(\d+)\.(\d+)\.(\d+)")
+RC_VERSION = re.compile(r"v?(\d+)\.(\d+)\.(\d+)-rc\.([1-9]\d*)")
 
 
 def version_tuple(value):
     match = VERSION.fullmatch((value or "").strip())
     return tuple(int(part) for part in match.groups()) if match else None
+
+
+def installed_version(value):
+    """Order an explicitly installed RC below its final version, never accept it from the stable feed."""
+    stable = version_tuple(value)
+    if stable is not None:
+        return (*stable, 1, 0)
+    match = RC_VERSION.fullmatch((value or "").strip())
+    if match:
+        major, minor, patch, candidate = (int(part) for part in match.groups())
+        return major, minor, patch, 0, candidate
+    return None
 
 
 def managed_root(root, environ=None):
@@ -30,7 +43,7 @@ def managed_root(root, environ=None):
         manifest = json.loads((root / "release.json").read_text())
     except (OSError, ValueError):
         return None
-    if manifest.get("product") != "niimstudio" or version_tuple(manifest.get("version", "")) is None:
+    if manifest.get("product") != "niimstudio" or installed_version(manifest.get("version", "")) is None:
         return None
     return root
 
@@ -56,8 +69,8 @@ def fetch_latest(current_version, timeout=5):
         return None
     tag = data.get("tag_name")
     latest = version_tuple(tag)
-    current = version_tuple(current_version)
-    if latest is None or current is None or latest <= current:
+    current = installed_version(current_version)
+    if latest is None or current is None or (*latest, 1, 0) <= current:
         return None
     return {"version": ".".join(str(part) for part in latest), "tag": tag}
 

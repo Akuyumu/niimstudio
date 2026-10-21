@@ -1,6 +1,14 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import { connectionState, printerInfo, printerMeta, rfidInfo, printerClient, confirmedStock } from "$/stores";
+  import {
+    connectionState,
+    printerInfo,
+    printerMeta,
+    rfidInfo,
+    printerClient,
+    confirmedStock,
+    stockOverride,
+  } from "$/stores";
   import type { LabelProps } from "$/types";
   import AppModal from "$/components/basic/AppModal.svelte";
   import { isNative } from "$/desktop/bridge";
@@ -16,6 +24,8 @@
     stockSizes,
     availableStockPresets,
     printableAreaNotice,
+    stockContext,
+    activeStockOverride,
     type DetectedStock,
   } from "./media";
 
@@ -41,8 +51,11 @@
   let refreshing = $state(false);
   let rememberRoll = $state(false);
   let error = $state("");
+  let selectingOverride = $state(false);
   let profile = $derived($connectionState === "connected" ? printerProfile($printerMeta, $printerInfo) : undefined);
   let detected = $derived($connectionState === "connected" ? detectedStock($rfidInfo.paperInfo, profile) : undefined);
+  let context = $derived(stockContext($printerMeta?.model, $rfidInfo.labelRfidInfo, $rfidInfo.paperInfo, profile));
+  let manual = $derived($connectionState === "connected" ? activeStockOverride($stockOverride, context) : undefined);
   let rollKey = $derived(rollStockKey($printerMeta?.model, $rfidInfo.labelRfidInfo));
   let savedPreset = $derived(rollKey ? stockSizes.find((stock) => stock.id === $savedRollStocks[rollKey]) : undefined);
   // A valid but conflicting/invalid geometry report must not be bypassed by a
@@ -66,11 +79,14 @@
       ? stockSizes.find((stock) => stock.id === selection)
       : undefined,
   );
-  let proposed = $derived(detected ?? remembered ?? (profile && chosen ? stockFromSize(chosen, profile) : undefined));
+  let proposed = $derived(
+    manual ?? detected ?? remembered ?? (profile && chosen ? stockFromSize(chosen, profile) : undefined),
+  );
   const description = (stock: DetectedStock) => `${stock.widthMm} × ${stock.heightMm} mm · ${stock.dpi} DPI`;
   const apply = (stock: DetectedStock, id = "") => {
+    if (blocked) return;
     error = "";
-    if (rememberRoll && rollKey && id && $connectionState === "connected") {
+    if (!selectingOverride && rememberRoll && rollKey && id && $connectionState === "connected") {
       try {
         savedRollStocks.update((saved) => ({ ...saved, [rollKey!]: id as (typeof stockSizes)[number]["id"] }));
       } catch {
@@ -80,6 +96,10 @@
     }
     // RFID tells us dimensions, not the die-cut shape. Keep an explicit shape.
     const configured = { ...stock, shape: id || !detected ? stock.shape : (current.shape ?? "rounded_rect") };
+    if (selectingOverride) {
+      stockOverride.set({ context, stock: { ...configured, labelType: detected?.labelType } });
+      selectingOverride = false;
+    }
     onApply(configured);
     confirmedStock.set(configured);
     applied = description(stock);
@@ -119,12 +139,20 @@
     if (shown && isNative) retained = true;
   });
   $effect(() => {
+    if ($stockOverride && $stockOverride.context !== context) {
+      stockOverride.set(undefined);
+      selection = "";
+      confirmedStock.set(undefined);
+    }
+  });
+  $effect(() => {
     const state = $connectionState;
     const reported = proposed;
     const busy = blocked;
     const model = $printerMeta?.model;
     if (state !== "connected") {
       handled = "";
+      if ($stockOverride) stockOverride.set(undefined);
       return;
     }
     if (busy) return;
@@ -168,12 +196,12 @@
       </p>{/if}
     {#if detected && $rfidInfo.paperInfo?.totalHeight !== undefined && $rfidInfo.paperInfo?.gapHeight !== undefined}
       <p class="small text-secondary">
-        Reported feed length: {$rfidInfo.paperInfo.totalHeight} mm including a {$rfidInfo.paperInfo.gapHeight} mm gap. The
-        library subtracts that gap to get the displayed sticker height. If this differs from your measured sticker, check
-        the report before printing.
+        {$printerMeta?.model === "B1_PRO"
+          ? `Reported sticker height: ${$rfidInfo.paperInfo.totalHeight} mm; separate gap: ${$rfidInfo.paperInfo.gapHeight} mm. On B1 Pro, the gap is not subtracted from the sticker height.`
+          : `Reported height: ${$rfidInfo.paperInfo.totalHeight} mm; gap: ${$rfidInfo.paperInfo.gapHeight} mm. Check the actual sticker before printing if these values disagree.`}
       </p>
     {/if}
-    {#if rollKey && !detected && !remembered}<label class="small d-flex gap-2 mb-3"
+    {#if rollKey && !detected && !remembered && !selectingOverride}<label class="small d-flex gap-2 mb-3"
         ><input type="checkbox" class="form-check-input" data-setting="remember-roll" bind:checked={rememberRoll} /> Remember
         my chosen size for this roll product on this printer</label
       >{/if}
@@ -189,46 +217,63 @@
     error = "";
     shown = true;
   }}
-  title={detected
-    ? "Stock detected by the printer. Size, DPI and feed direction are automatic."
-    : "Choose the stock loaded in your printer"}>
+  title={manual
+    ? "Manual size override for this roll report"
+    : detected
+      ? "Stock detected by the printer. Size, DPI and feed direction are automatic."
+      : "Choose the stock loaded in your printer"}>
   <MdIcon icon="label" />
-  {#if detected}{detected.widthMm} × {detected.heightMm} mm <span class="studio-stock-auto">Auto</span>
+  {#if manual}{manual.widthMm} × {manual.heightMm} mm <span class="studio-stock-auto">Manual</span>
+  {:else if detected}{detected.widthMm} × {detected.heightMm} mm <span class="studio-stock-auto">Auto</span>
   {:else if remembered}{remembered.widthMm} × {remembered.heightMm} mm <span class="studio-stock-auto">Saved roll</span>
   {:else}Label stock{/if}
 </button>
 
 {#if shown || retained}
   <AppModal
-    title={detected
-      ? "Detected label stock"
-      : remembered
-        ? "Saved roll size"
-        : proposed
-          ? "Use this printer's resolution?"
-          : "Choose your label stock"}
+    title={selectingOverride
+      ? "Override detected size"
+      : manual
+        ? "Manual stock size"
+        : detected
+          ? "Detected label stock"
+          : remembered
+            ? "Saved roll size"
+            : proposed
+              ? "Use this printer's resolution?"
+              : "Choose your label stock"}
     bind:show={shown}
+    onClose={() => (selectingOverride = false)}
     bind:this={modal}>
     {#if error}<p class="alert alert-danger" role="alert">{error}</p>{/if}
-    {#if proposed}
-      {#if detected && chosen && (chosen.widthMm !== detected.widthMm || chosen.heightMm !== detected.heightMm)}<p
+    {#if proposed && !selectingOverride}
+      {#if manual}<p class="alert alert-warning small" data-testid="manual-stock-warning">
+          Using your manual size instead of the printer's report. This override is for this connection and roll report
+          only; it clears on reconnect or when the roll/report changes.
+        </p>{/if}
+      {#if !manual && detected && chosen && (chosen.widthMm !== detected.widthMm || chosen.heightMm !== detected.heightMm)}<p
           class="alert alert-warning"
           data-testid="stock-report-conflict">
           You chose {chosen.widthMm} × {chosen.heightMm} mm, but the printer reports {detected.widthMm} × {detected.heightMm}
           mm. Check the actual sticker and the reported gap before accepting a new size.
         </p>{/if}
-      <p class="studio-stock-summary" class:text-success={!!detected || !!remembered} data-testid="detected-stock">
-        {description(proposed)}{detected ? " · Detected" : remembered ? " · Saved roll" : ""}
+      <p
+        class="studio-stock-summary"
+        class:text-success={!manual && (!!detected || !!remembered)}
+        data-testid="detected-stock">
+        {description(proposed)}{manual ? " · Manual" : detected ? " · Detected" : remembered ? " · Saved roll" : ""}
       </p>
       {#if printableAreaNotice(proposed)}<p class="alert alert-info small" data-testid="printable-area-notice">
           {printableAreaNotice(proposed)}
         </p>{/if}
       <p>
-        {detected
-          ? "The printer reports this stock."
-          : remembered
-            ? "Using the size you previously confirmed for this roll's product code, not a measured size."
-            : "Using the stock size you chose."} Resolution and feed direction are set automatically.
+        {manual
+          ? "Using the size you explicitly selected, not automatic detection."
+          : detected
+            ? "The printer reports this stock."
+            : remembered
+              ? "Using the size you previously confirmed for this roll's product code, not a measured size."
+              : "Using the stock size you chose."} Resolution and feed direction are set automatically.
       </p>
       <p class="text-secondary">
         {stockMatches(current, proposed)
@@ -240,6 +285,24 @@
         shape.
       </p>
       {@render rollReadStatus()}
+      {#if detected && !manual}<button
+          class="btn btn-sm btn-secondary"
+          data-action="override-stock"
+          disabled={blocked}
+          onclick={() => {
+            selectingOverride = true;
+            rememberRoll = false;
+          }}>Override detected size</button
+        >{/if}
+      {#if manual}<button
+          class="btn btn-sm btn-secondary"
+          data-action="restore-stock-detection"
+          disabled={blocked}
+          onclick={() => {
+            stockOverride.set(undefined);
+            selection = "";
+          }}>Use printer detection</button
+        >{/if}
       {#if remembered}<button
           class="btn btn-sm btn-secondary"
           data-action="change-saved-roll"
@@ -248,9 +311,11 @@
         >{/if}
     {:else}
       <p>
-        {$connectionState === "connected"
-          ? "This printer or roll does not report a usable label size. Choose the size printed on the roll packaging."
-          : "Connect a printer for automatic stock detection, or choose a size to design offline."}
+        {selectingOverride
+          ? "Choose the actual sticker size you measured. This does not change printer settings or guess a size from the RFID code."
+          : $connectionState === "connected"
+            ? "This printer or roll does not report a usable label size. Choose the size printed on the roll packaging."
+            : "Connect a printer for automatic stock detection, or choose a size to design offline."}
       </p>
       <p class="text-secondary small">
         {profile
@@ -298,14 +363,24 @@
           disabled={blocked || refreshing}
           onclick={refresh}>Check roll again</button
         >{/if}
-      <button class="btn btn-secondary" data-action="keep-stock-design" onclick={() => modal?.hide()}
-        >{proposed && !stockMatches(current, proposed) ? "Keep design" : "Close"}</button>
-      {#if proposed}<button
+      <button
+        class="btn btn-secondary"
+        data-action="keep-stock-design"
+        onclick={() => {
+          if (selectingOverride) selectingOverride = false;
+          else modal?.hide();
+        }}
+        >{selectingOverride
+          ? "Cancel override"
+          : proposed && !stockMatches(current, proposed)
+            ? "Keep design"
+            : "Close"}</button>
+      {#if proposed && !selectingOverride}<button
           class="btn btn-primary"
           data-action="use-detected-stock"
           disabled={blocked}
           onclick={() => apply(proposed!, detected ? "" : (savedPreset?.id ?? selection))}
-          >Use {detected ? "detected stock" : "printer settings"}</button
+          >Use {manual ? "manual size" : detected ? "detected stock" : "printer settings"}</button
         >{/if}
     {/snippet}
   </AppModal>

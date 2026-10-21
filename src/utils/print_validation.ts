@@ -13,6 +13,9 @@ export function validatePrintJob(options: {
   if (![width, height, copies, pages].every((value) => Number.isSafeInteger(value) && value > 0)) {
     return "Label dimensions, copies, and page count must be positive whole numbers.";
   }
+  if (copies * pages > 65535) {
+    return "Too many labels in one job. Copies × designs must not exceed 65,535; split the batch into smaller jobs.";
+  }
   const headSize = direction === "top" ? width : height;
   if (printheadPixels !== undefined && headSize > printheadPixels) {
     return `This label needs ${headSize} printhead pixels; the selected printer supports ${printheadPixels}. Adjust label dimensions or DPI first.`;

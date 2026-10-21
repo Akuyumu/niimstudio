@@ -8,7 +8,7 @@
 3. For USB, use a **data-capable** cable and select the detected serial port.
    For Bluetooth, turn Bluetooth on in your desktop settings first, then **Scan for printers**.
 4. Select the printer. BLE often works with **Connect** without pairing. Use
-   **Pair** if a bond is required; answer the native PIN/passkey prompt using
+    **Pair** is offered only after an explicit authentication failure; answer any native PIN/passkey prompt using
     the printer's documented code. No default PIN is assumed.
 5. The app reads the printer's model/capabilities and paper information. For a
    recognized B1 Pro it selects 300 DPI and top feed. Valid reported dimensions
@@ -46,6 +46,14 @@ excludes its gap. Pixel/mm consistency, printhead width, finite positive sizes,
 and protocol byte alignment are checked before use. DPI comes from capabilities
 when available, otherwise the known model profile; feed direction comes from that
 profile. Recognized media type also sets gaps/black-mark handling in Preview.
+**B1 Pro height correction:** its firmware-2.12 response reports 30 mm/354 px
+sticker height plus a separate 6 mm/70 px field. NiimBlueLib 0.47.0 incorrectly
+subtracted the latter unconditionally, yielding 24 mm/284 px. NiimStudio backports
+the B1 Pro interpretation from upstream commit
+[`45ef990`](https://github.com/MultiMote/niimbluelib/commit/45ef990007e5ba3b257a9a81332e75ffcdf7b442):
+do not subtract that gap from B1 Pro sticker height. This does not rewrite the
+packet decoder or infer dimensions from a roll product code. Other models retain
+their existing interpretation pending model-specific evidence.
 
 Older firmware, third-party/non-RFID stock, continuous rolls without a finite
 label length, and special tail stock may not provide usable dimensions. These
@@ -57,12 +65,13 @@ shapes and shows ordinary rounded stock with approximate corners in both views.
 Changing canvas size does not silently scale or rearrange artwork. A confirmation
 protects existing designs; Undo restores the previous canvas size. Printing is
 blocked until the design matches detected or explicitly chosen stock. This logic
-has synthetic-metadata tests. A user screenshot now confirms a real dimensions
-response, but it showed 50×24 mm for a roll the user identified as 50×30 mm. That
-discrepancy is unresolved: inspect **Settings → Printer and roll details → paper**,
-particularly `totalHeight` and `gapHeight`, rather than assuming the displayed
-height is correct or silently rewriting the parser. The stock dialog explains
-that NiimBlueLib subtracts the reported gap from the reported feed length.
+has synthetic-metadata tests and the supplied real paper fields are a regression
+fixture. Confirm the corrected 50×30 mm result after restarting the app. If a
+different report is still wrong, **Override detected size** lets you choose a
+compatible preset explicitly; it is labelled **Manual** in the editor and print
+preview. It changes no calibration and expires on reconnect or changed roll/report.
+**Use printer detection** clears it. Overrides do not silently defeat future roll
+changes or printhead limits. The original paper fields remain visible in Settings.
 
 ## USB permission errors
 
@@ -122,6 +131,7 @@ also caught a brief connection followed by `le-connection-abort-by-local` before
 service discovery. [Bleak's BlueZ backend](https://github.com/hbldh/bleak/blob/develop/bleak/backends/bluezdbus/client.py)
 explicitly handles that transient error.
 
+The user subsequently confirmed Bluetooth works through the actual application.
 The native transport now refreshes the LE advertisement, shares/refcounts only
 its own chooser/connection discovery session, prefers the known combined
 NIIMBOT characteristic, and retries one local-abort/timeout after canceling its

@@ -30,7 +30,7 @@ import { FileUtils } from "$/utils/file_utils";
 import { createPrinterInfo } from "@mmote/niimbluelib/dist/cjs/client/abstract_client";
 import { isNative } from "$/desktop/bridge";
 import { NativeNiimbotClient } from "$/desktop/client";
-import type { DetectedStock } from "$/desktop/media";
+import type { DetectedStock, StockOverride } from "$/desktop/media";
 
 export const fontCache = writable<string[]>([OBJECT_DEFAULTS_TEXT.fontFamily]);
 export const appConfig = writablePersisted<AppConfig>("config", AppConfigSchema, APP_CONFIG_DEFAULTS);
@@ -41,6 +41,7 @@ export const loadedFonts = writable<FontFace[]>([]);
 export const connectionState = writable<ConnectionState>("disconnected");
 export const printJobActive = writable(false);
 export const confirmedStock = writable<DetectedStock | undefined>();
+export const stockOverride = writable<StockOverride | undefined>();
 export const connectedPrinterName = writable<string>("");
 export const printerClient = writable<NiimbotAbstractClient>();
 export const heartbeatData = writable<HeartbeatData>();
@@ -90,6 +91,7 @@ export const initClient = (connectionType: ConnectionType) => {
 
       newClient.on("connect", (e) => {
         confirmedStock.set(undefined);
+        stockOverride.set(undefined);
         heartbeatFails.set(0);
         connectionState.set("connected");
         connectedPrinterName.set(e.info.deviceName ?? "unknown");
@@ -107,6 +109,7 @@ export const initClient = (connectionType: ConnectionType) => {
         printerMeta.set(undefined);
         rfidInfo.set({});
         confirmedStock.set(undefined);
+        stockOverride.set(undefined);
       });
 
       newClient.on("heartbeat", (e) => {

@@ -92,6 +92,12 @@ those same checks before publishing. To publish, ensure
 package.json/native version agree, update release notes, merge the accepted commit
 to `main`, and push `v<version>`. `scripts/check-release.py` blocks non-stable tags,
 version mismatches, and commits outside `main` before package/release jobs run.
+For an opt-in candidate, use matching `MAJOR.MINOR.PATCH-rc.N` web/native versions
+and a fresh `vMAJOR.MINOR.PATCH-rc.N` tag already reachable from `origin/dev`.
+`check-release.py --candidate` is a separate gate: it cannot authorize stable
+tags. `release-candidate.yml` reuses all package checks and always publishes with
+`--prerelease --latest=false`. The stable workflow skips RC tags; normal users
+remain on the previous published stable release. Never reuse an RC tag for fixes.
 The stable updater independently rejects draft/prerelease releases and never
 installs a development checkout. Updates are opt-in; retaining a published
 release is supported. Failed install/download checks must leave it intact.

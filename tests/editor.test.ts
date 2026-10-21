@@ -32,6 +32,13 @@ test("CSV handles quoted fields, multiline content, missing fields, and Unicode"
   assert.deepEqual(parsed[1], { name: "a,b", description: 'double "quote"', empty: "z" });
 });
 
+test("job copy/page totals cannot overflow the protocol's 16-bit page count", () => {
+  const job = { width: 472, height: 354, direction: "top" as const, copies: 65535, pages: 1, density: 3 };
+  assert.equal(validatePrintJob(job), undefined);
+  assert.match(validatePrintJob({ ...job, copies: 65536 })!, /Too many labels/);
+  assert.match(validatePrintJob({ ...job, copies: 1000, pages: 1000 })!, /Copies × designs/);
+});
+
 test("CSV treats dangerous property names as ordinary data", () => {
   const parsed = csvParse("__proto__,constructor\nhello,world");
   assert.equal(Object.getPrototypeOf(parsed[0]), Object.prototype);

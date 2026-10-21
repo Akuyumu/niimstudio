@@ -11,6 +11,7 @@ import { LabelDesignerObjectHelper } from "$/utils/label_designer_object_helper"
 import { nativeRequest } from "$/desktop/bridge";
 import { detectedStock, printerProfile, stockMatches } from "$/desktop/media";
 import { runSettingsSmoke } from "$/desktop/smoke_settings";
+import { runStockOverrideSmoke } from "$/desktop/smoke_stock_override";
 
 const settle = async () => {
   await tick();
@@ -104,7 +105,12 @@ export async function runStockSmoke(context: {
   context.openPreview();
   await settle();
   await click('[data-action="print-label"]');
-  await tick();
+  await waitFor(
+    () =>
+      document.querySelector(".modal.show .alert-danger")?.textContent?.includes("differs from the loaded stock") ===
+      true,
+    "mismatched stock print guard",
+  );
   const mismatchedStockCannotPrint =
     document.querySelector(".modal.show .alert-danger")?.textContent?.includes("differs from the loaded stock") ===
     true;
@@ -140,7 +146,11 @@ export async function runStockSmoke(context: {
   context.openPreview();
   await settle();
   await click('[data-action="print-label"]');
-  await tick();
+  await waitFor(
+    () =>
+      document.querySelector(".modal.show .alert-danger")?.textContent?.includes("Choose the stock loaded") === true,
+    "unknown stock print guard",
+  );
   const unknownStockCannotPrint =
     document.querySelector(".modal.show .alert-danger")?.textContent?.includes("Choose the stock loaded") === true;
   await click(".modal.show .btn-close");
@@ -223,6 +233,7 @@ export async function runStockSmoke(context: {
   await nativeRequest("testSnapshot", { name: "stock-printable-area" });
   await click(".modal.show .btn-close");
   await waitFor(() => !document.querySelector(".modal.show"), "closed margin preview");
+  const overrideResults = await runStockOverrideSmoke(context.openPreview);
 
   connectionState.set("disconnected");
   printerMeta.set(previous.meta);
@@ -254,6 +265,7 @@ export async function runStockSmoke(context: {
     simplePrintPreview,
     advancedPrintControlsAvailable,
     advancedPrintTooltips,
+    ...overrideResults,
     ...settingsResults,
   };
 }

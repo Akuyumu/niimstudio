@@ -37,6 +37,18 @@ class VersionTests(unittest.TestCase):
             with self.subTest(tag=tag), patch("urllib.request.urlopen", return_value=response):
                 self.assertIsNone(fetch_latest("0.1.2"))
 
+    def test_installed_candidate_can_upgrade_to_final_but_not_downgrade_or_follow_candidates(self):
+        for data, expected in [
+            ({"tag_name": "v0.1.3"}, None),
+            ({"tag_name": "v0.2.0"}, {"version": "0.2.0", "tag": "v0.2.0"}),
+            ({"tag_name": "v0.2.0-rc.2", "prerelease": True}, None),
+            ({"tag_name": "v0.2.0-rc.2"}, None),
+        ]:
+            response = MagicMock()
+            response.__enter__.return_value.read.return_value = json.dumps(data).encode()
+            with self.subTest(data=data), patch("urllib.request.urlopen", return_value=response):
+                self.assertEqual(fetch_latest("0.2.0-rc.1"), expected)
+
     def test_drafts_and_prereleases_never_reach_stable_users(self):
         for metadata in ({"draft": True}, {"prerelease": True}, {"tag_name": "v0.2.0-rc1"}):
             response = MagicMock()
@@ -58,6 +70,7 @@ class ManagedInstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             self.assertIsNone(managed_root(root))
+
             (root / "release.json").write_text(json.dumps({"product": "niimstudio", "version": "0.1.2"}))
             self.assertEqual(managed_root(root), root)
             self.assertIsNone(managed_root(root, {"FLATPAK_ID": "io.github.niimstudio.App"}))
@@ -65,6 +78,13 @@ class ManagedInstallTests(unittest.TestCase):
             self.assertIsNone(managed_root(root))
             (root / "release.json").write_text("not json")
             self.assertIsNone(managed_root(root))
+
+    def test_explicit_candidate_install_is_recognized_without_accepting_unknown_dev_versions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for version, expected in (("0.2.0-rc.1", root), ("0.2.0-dev", None)):
+                (root / "release.json").write_text(json.dumps({"product": "niimstudio", "version": version}))
+                self.assertEqual(managed_root(root), expected)
 
     def test_update_check_can_be_disabled(self):
         self.assertTrue(updates_enabled({}))

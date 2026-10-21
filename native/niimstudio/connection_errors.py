@@ -1,6 +1,22 @@
 """Small actionable tips; keep the original error available for troubleshooting."""
 
 
+def authentication_failed(error):
+    detail = str(error).lower()
+    return any(
+        word in detail
+        for word in (
+            "authenticationfailed",
+            "authenticationrejected",
+            "authenticationrequired",
+            "notauthorized",
+            "not authorized",
+            "notpaired",
+            "not paired",
+        )
+    )
+
+
 def connection_tip(error, kind="bluetooth"):
     detail = str(error).lower()
     if kind == "serial":

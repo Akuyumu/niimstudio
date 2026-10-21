@@ -41,6 +41,17 @@ model/product/material identity; private tag/roll serials are not keys. A parsed
 conflicting paper report cannot be bypassed by a remembered size. These features
 are development work until accepted and released.
 
+`media_reads.ts` narrowly normalizes B1 Pro's parsed height from `totalHeight`
+and `totalHeightPixel`, backporting upstream's model-dependent gap interpretation
+while preserving the pinned library and raw decoded fields. The supplied 30mm/
+354px + 6mm/70px report is tested; other models are not reinterpreted.
+Explicit manual overrides live in a separate session-only store, bound to model,
+roll identity, full report and print profile. Both stock setup and print preview
+honor only a matching scope; reconnect and changed reports expire it. Persistent
+SKU preset mappings remain distinct and cannot override conflicting reports.
+Print preflight renders/validates the actual offset-adjusted raster before job
+creation, and factory/init failures restore the controls and heartbeat lifecycle.
+
 Controls are rendered only for readable/recognized values, with sleep options
 filtered by an interpretable reported capability range. A read does not guarantee
 writability: every write needs read-back, with actual mismatched values or unknown

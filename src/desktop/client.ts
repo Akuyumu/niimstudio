@@ -23,7 +23,7 @@ export class NativeNiimbotClient extends NiimbotAbstractClient {
   }
 
   override async fetchRfidInfo() {
-    const { info, errors } = await readMedia(this.protocol);
+    const { info, errors } = await readMedia(this.protocol, this.printerInfo.modelId);
     this.rfidInfo = info;
     mediaReadReport.set(errors);
     this.emit("rfidinfofetched", new RfidInfoFetchedEvent(info));

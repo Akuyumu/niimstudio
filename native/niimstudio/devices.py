@@ -7,9 +7,18 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk
 
 from .bluetooth import DEVICE
-from .connection_errors import connection_tip
+from .connection_errors import authentication_failed, connection_tip
 from .pairing import PairingAgent
 from .serial_transport import discover_serial
+
+
+def offer_pairing(device, authentication_failures):
+    return (
+        device["kind"] == "bluetooth"
+        and not device.get("paired")
+        and not device.get("classic_only")
+        and device["id"] in authentication_failures
+    )
 
 
 class DeviceChooser(Adw.Window):
@@ -34,6 +43,10 @@ class DeviceChooser(Adw.Window):
         self.signature = None
         self.failure = ""
         self.pair_cancel_requested = False
+        self.authentication_failures = set()
+        self.connecting_device = None
+        self.history = history
+        self.policy_changed = policy_changed
         self.connect("close-request", self._closed)
 
         layout = Adw.ToolbarView()
@@ -57,16 +70,7 @@ class DeviceChooser(Adw.Window):
             row.set_activatable_widget(reconnect)
             self.message.add(row)
 
-            def preference_changed(switch, _property):
-                history.auto_reconnect = switch.get_active()
-                try:
-                    history.save()
-                    if policy_changed:
-                        policy_changed(history.auto_reconnect)
-                except OSError as error:
-                    self.set_status(f"Could not save reconnect preference: {error}")
-
-            reconnect.connect("notify::active", preference_changed)
+            self.reconnect_handler = reconnect.connect("notify::active", self.reconnect_changed)
         scan = Gtk.Button(label="Scan for printers", icon_name="view-refresh-symbolic")
         scan.connect("clicked", lambda _button: self.start_scan())
         scan.set_sensitive(hardware_enabled)
@@ -74,7 +78,7 @@ class DeviceChooser(Adw.Window):
         page.add(self.message)
         self.usb = Adw.PreferencesGroup(title="USB", description="USB serial devices detected on this computer")
         self.ble = Adw.PreferencesGroup(
-            title="Bluetooth LE", description="Use Connect first. Pair only if Bluetooth authentication is required."
+            title="Bluetooth LE", description="Choose Connect. Most printers do not need pairing."
         )
         page.add(self.usb)
         page.add(self.ble)
@@ -92,6 +96,24 @@ class DeviceChooser(Adw.Window):
         if not self.closed:
             self.status.set_description(text)
 
+    def reconnect_changed(self, switch, _property):
+        previous = self.history.auto_reconnect
+        self.history.auto_reconnect = switch.get_active()
+        try:
+            self.history.save()
+        except OSError as error:
+            self.history.auto_reconnect = previous
+            switch.handler_block(self.reconnect_handler)
+            try:
+                switch.set_active(previous)
+            finally:
+                switch.handler_unblock(self.reconnect_handler)
+            self.failure = f"Could not save reconnect preference: {error}. The previous preference was kept."
+            self.set_status(self.failure)
+            return
+        if self.policy_changed:
+            self.policy_changed(self.history.auto_reconnect)
+
     def show_failure(self, action, error, kind="bluetooth"):
         self.failure = f"{action} failed: {error}\n{connection_tip(error, kind)}"
         self.set_status(self.failure)
@@ -103,6 +125,9 @@ class DeviceChooser(Adw.Window):
         self.usb.set_sensitive(True)
         self.ble.set_sensitive(True)
         self.show_failure("Connection", error, kind)
+        if kind == "bluetooth" and self.connecting_device and authentication_failed(error):
+            self.authentication_failures.add(self.connecting_device)
+            self.refresh()
 
     def connection_succeeded(self):
         self.on_cancel = None
@@ -120,7 +145,7 @@ class DeviceChooser(Adw.Window):
         self.ble.set_description(
             "Classic serial is Bluetooth, not USB. This app connects through compatible BLE services."
             if show_all
-            else "Use Connect first. Pair only if Bluetooth authentication is required."
+            else "Choose Connect. Pair is offered only after an authentication failure."
         )
 
         def discover():
@@ -135,7 +160,7 @@ class DeviceChooser(Adw.Window):
             if self.closed or self.busy:
                 return
             usb, ble, error = result
-            signature = repr((usb, ble))
+            signature = repr((usb, ble, sorted(self.authentication_failures)))
             if signature != self.signature:
                 self.signature = signature
                 for group, row in self.rows:
@@ -155,12 +180,13 @@ class DeviceChooser(Adw.Window):
                                 else "BLE candidate · services not yet checked"
                             )
                         )
-                        subtitle = f"{device['address']} · {mode} · {'Paired' if device['paired'] else 'Not paired'}"
+                        bond = " · Saved Bluetooth bond" if device["paired"] else ""
+                        subtitle = f"{device['address']} · {mode}{bond}"
                     row = Adw.ActionRow(title=device["name"], subtitle=subtitle, use_markup=False)
-                    if device["kind"] == "bluetooth" and not device["paired"] and not device.get("classic_only"):
+                    if offer_pairing(device, self.authentication_failures):
                         pair = Gtk.Button(label="Pair", valign=Gtk.Align.CENTER)
                         pair.set_tooltip_text(
-                            "Optional: most BLE printers use Connect without pairing. No PIN is guessed."
+                            "This connection reported an authentication problem. Pair creates a saved Bluetooth bond; it is not the same as Connect. No PIN is guessed."
                         )
                         pair.set_sensitive(self.hardware_enabled)
                         pair.connect("clicked", lambda _button, d=device: self.pair(d))
@@ -310,6 +336,7 @@ class DeviceChooser(Adw.Window):
             return
         self.failure = ""
         self.busy = True
+        self.connecting_device = device["id"]
         self.usb.set_sensitive(False)
         self.ble.set_sensitive(False)
         self.set_status(f"Connecting to {device['name']}… Bluetooth service discovery can take up to a minute.")

@@ -2,6 +2,14 @@
 
 NiimStudio is a desktop adaptation/fork, not a new protocol implementation.
 
+The 0.2.0-rc.1 B1 Pro height compatibility adjustment in `src/desktop/media_reads.ts`
+is based on NiimBlueLib commit
+[`45ef990007e5ba3b257a9a81332e75ffcdf7b442`](https://github.com/MultiMote/niimbluelib/commit/45ef990007e5ba3b257a9a81332e75ffcdf7b442).
+It operates on the library's decoded fields, retaining `totalHeight` as sticker
+height for B1 Pro instead of subtracting the separate gap. A supplied real B1 Pro
+2.12 report and measured 50×30 mm label support this narrow backport. Other models
+are left unchanged; packet generation/parsing still uses the exact pinned library.
+
 | Component | Source | Baseline |
 | --- | --- | --- |
 | Label editor | https://github.com/MultiMote/niimblue | `82c5605780818299422a6acdf3180d87c569578d`, release `2026.9.0` |

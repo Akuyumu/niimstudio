@@ -1,3 +1,18 @@
+# NiimStudio 0.2.0-rc.1
+
+Opt-in release candidate; stable v0.1.3 is unchanged.
+
+- Reliable B1 Pro BLE discovery, one bounded transient retry, and clearer connection feedback.
+- Connect is the normal action; Pair appears only after an authentication failure.
+- Verified sound/sleep controls, hidden unavailable settings, inline confirmation.
+- Correct B1 Pro label-height interpretation: 30 mm is not reduced by the separate 6 mm gap field.
+- Explicit, session-scoped stock override and correctly available 50 mm stock presets.
+- Simple print preview, Advanced tooltips, safe setup-failure recovery and offset validation.
+- Sharper display zoom, expanding font picker and aligned transport-neutral Devices controls.
+- Separate candidate publication and stable-update protections. No physical print verification claimed.
+
+## Inherited NiimBlue changelog
+
 # 2026.9.0
 
 * Add changelog (starts from commit 48ce74).

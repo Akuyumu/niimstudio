@@ -1,0 +1,36 @@
+name: Release candidate
+on:
+  push:
+    tags: ['v[0-9]*-rc.[0-9]*']
+permissions:
+  contents: read
+jobs:
+  candidate-policy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Verify explicit candidate tag, versions and dev ancestry
+        run: python3 scripts/check-release.py --candidate "$GITHUB_REF_NAME"
+  build-and-test:
+    needs: candidate-policy
+    uses: ./.github/workflows/package-validation.yml
+  publish:
+    needs: build-and-test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          path: .release
+          merge-multiple: true
+      - name: Checksum every candidate asset
+        working-directory: .release
+        run: sha256sum niimstudio-linux.tar.gz install.sh *.flatpak > SHA256SUMS
+      - name: Publish prerelease without changing latest stable
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" .release/niimstudio-linux.tar.gz .release/SHA256SUMS .release/install.sh .release/*.flatpak --verify-tag --prerelease --latest=false --title "NiimStudio $GITHUB_REF_NAME (release candidate)" --notes-file docs/RELEASE-NOTES.md

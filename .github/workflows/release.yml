@@ -6,6 +6,7 @@ permissions:
   contents: read
 jobs:
   stable-policy:
+    if: ${{ !contains(github.ref_name, '-rc.') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5

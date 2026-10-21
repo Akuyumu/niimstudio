@@ -804,6 +804,8 @@ class StudioApplication(Adw.Application):
             "crisp-text",
             "print-advanced",
             "stock-compatible",
+            "stock-override",
+            "stock-height-corrected",
             "stock-printable-area",
         }
         directory = os.environ.get("NIIMSTUDIO_TEST_ARTIFACTS")

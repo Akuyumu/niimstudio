@@ -9,7 +9,30 @@
   The updater explicitly rejects drafts/prereleases as well as non-stable tags.
 - Managed installs and immutable published assets are independent of development
   builds; install validation failures preserve the previous baseline. Source users
-  can pin a release tag in a separate checkout. No new release was made here.
+  can pin a release tag in a separate checkout. A separate opt-in 0.2.0-rc.1
+  candidate is prepared; stable v0.1.3 and main are unchanged.
+
+## 0.2.0-rc.1 final review
+
+- The user confirms Bluetooth now connects in the application. Pair is no longer
+  a default row action: it appears only after that device's explicit authentication
+  failure, not after timeouts or canceled authentication. Connect is the normal path.
+- The user supplied the actual B1 Pro 2.12 paper fields: totalHeight=30/354px,
+  gapHeight=6/70px, but parsed paperHeight=24/284px. This proves the 24mm display
+  came from unconditional subtraction in the pinned library, not a 24mm raw height.
+  A narrow B1 Pro compatibility backport follows upstream commit
+  `45ef990007e5ba3b257a9a81332e75ffcdf7b442`: retain totalHeight as sticker height.
+  Other models keep their existing interpretation; the protocol remains pinned.
+- Explicit manual override is available in the detected-stock dialog. It is scoped
+  to the current connection/roll/report/profile, visibly labelled Manual, respected
+  by print validation, and expires on a changed roll/report or reconnect. It is not
+  silently persisted as an automatic override of future reports.
+- Review fixed reconnect-preference save rollback, task-factory exceptions leaving
+  printing locked, and validation of the actual offset-adjusted raster before a job
+  starts. New GUI regressions cover failures, override/restore/expiry and the 30mm fix.
+- Candidate tags have a separate dev-ancestry/version gate and the same package
+  matrix as stable releases. Publication is always prerelease and never latest;
+  candidate installs can later be offered final stable, without downgrading to 0.1.3.
 
 ## Development settings and roll-read work (not released)
 
@@ -65,8 +88,8 @@
   incompatible presets are hidden. Reported head width takes precedence over the
   static fallback. No speculative SKU or model-based loaded-roll size is inferred.
 - The user saw a real 50×24 mm size response for an identified 50×30 mm roll.
-  That is evidence of a response, not verified geometry; the gap/height discrepancy
-  still needs the actual paper-info fields. A conflicting report must not silently
+  The actual paper-info fields subsequently confirmed a software subtraction bug
+  (fixed in the candidate review above). A conflicting report must not silently
   replace an explicitly chosen physical size, even on a blank canvas.
 - Native preview shows Copies and Print; technical controls are collapsed under
   Advanced with plain-language hover descriptions. Protocol selection is automatic.
@@ -146,7 +169,7 @@
 
 ## Automated verification
 
-- 97 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
+- 104 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
   fragmentation, service discovery, notifications, and cleanup; mocked pairing
   agents/prompts; palette safety/GTK compositing, bridge validation, and device history.
 - Installer tests cover checksum failure, traversal/links, update rollback,
@@ -156,7 +179,7 @@
 - Ubuntu CI exercises the actual installed native app and real Flatpak GUI on
   x86-64 and ARM64. Exported Flatpak bundles are installed/reinstalled with a
   retained-data fixture before publishing, not merely built as manifests.
-- 40 Node tests: settings/read-back, media reads, saved-roll identity, connection
+- 45 Node tests: settings/read-back, media reads, saved-roll identity, connection
   troubleshooting tips, CSV safety, print validation, undo, reconnect, every printable
   Code 128 character, EAN-13, cancellation, media validation, head-width/rotation
   mapping, resolution priority, and safe preset conversion.
@@ -187,9 +210,9 @@
 ## Still needs real hardware / user acceptance
 
 A B1 Pro's classic/BLE advertisements have been observed and the user confirms
-USB connection works. Agent-run BLE link/handshake/heartbeat cycles now pass as
-described above; user acceptance through the restarted GUI and physical printing
-are still outstanding.
+USB connection works. Agent-run BLE link/handshake/heartbeat cycles now pass and
+the user confirms Bluetooth works through the restarted GUI. Physical printing
+and hardware acceptance for the corrected height remain outstanding.
 USB/BLE printing, BlueZ pairing prompts with real hardware, battery/RFID accuracy
 and automatic sizing from real media reports,
 reconnect behavior under printer faults, and representative real-media results

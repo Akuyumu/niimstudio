@@ -4,12 +4,22 @@ from unittest.mock import Mock, patch
 
 from niimstudio.app import StudioApplication
 from niimstudio.connection_errors import connection_tip
-from niimstudio.devices import DeviceChooser
+from niimstudio.devices import DeviceChooser, offer_pairing
 
 
 class DeviceFeedbackTests(unittest.TestCase):
     def chooser(self):
-        chooser = SimpleNamespace(closed=False, failure="", busy=True, usb=Mock(), ble=Mock(), status=Mock())
+        chooser = SimpleNamespace(
+            closed=False,
+            failure="",
+            busy=True,
+            usb=Mock(),
+            ble=Mock(),
+            status=Mock(),
+            authentication_failures=set(),
+            connecting_device=None,
+            refresh=Mock(),
+        )
         chooser.set_status = MethodType(DeviceChooser.set_status, chooser)
         chooser.show_failure = MethodType(DeviceChooser.show_failure, chooser)
         return chooser
@@ -26,6 +36,40 @@ class DeviceFeedbackTests(unittest.TestCase):
 
     def test_pairing_not_supported_suggests_connect_without_pairing(self):
         self.assertIn("without pairing", connection_tip("org.bluez.Error.NotSupported"))
+
+    def test_pair_is_not_a_default_duplicate_of_connect(self):
+        device = {"kind": "bluetooth", "id": "/ble", "paired": False}
+        self.assertFalse(offer_pairing(device, set()))
+        self.assertTrue(offer_pairing(device, {"/ble"}))
+        self.assertFalse(offer_pairing({**device, "paired": True}, {"/ble"}))
+        self.assertFalse(offer_pairing({**device, "classic_only": True}, {"/ble"}))
+        self.assertFalse(offer_pairing({**device, "kind": "serial"}, {"/ble"}))
+
+    def test_only_explicit_auth_failure_exposes_pair_on_that_device(self):
+        chooser = self.chooser()
+        chooser.connecting_device = "/ble"
+        for error in ("Timeout was reached", "le-connection-abort-by-local", "AuthenticationCanceled"):
+            DeviceChooser.connection_failed(chooser, error)
+            self.assertEqual(chooser.authentication_failures, set())
+        DeviceChooser.connection_failed(chooser, "org.bluez.Error.AuthenticationFailed")
+        self.assertEqual(chooser.authentication_failures, {"/ble"})
+        chooser.refresh.assert_called_once()
+
+    def test_failed_preference_save_restores_history_and_switch(self):
+        chooser = self.chooser()
+        chooser.history = Mock(auto_reconnect=True)
+        chooser.history.save.side_effect = OSError("full disk")
+        chooser.policy_changed = Mock()
+        chooser.reconnect_handler = 9
+        switch = Mock()
+        switch.get_active.return_value = False
+        DeviceChooser.reconnect_changed(chooser, switch, None)
+        self.assertTrue(chooser.history.auto_reconnect)
+        switch.set_active.assert_called_once_with(True)
+        switch.handler_block.assert_called_once_with(9)
+        switch.handler_unblock.assert_called_once_with(9)
+        chooser.policy_changed.assert_not_called()
+        self.assertIn("previous preference was kept", chooser.failure)
 
     def test_classic_tip_explains_pairing_will_not_enable_ble(self):
         self.assertIn("Pairing the classic entry will not enable BLE", connection_tip("classic Serial Port"))
@@ -48,7 +92,7 @@ class DeviceFeedbackTests(unittest.TestCase):
         chooser.busy = False
         chooser.refreshing = False
         chooser.show_all = Mock()
-        chooser.signature = repr(([], []))
+        chooser.signature = repr(([], [], []))
         chooser.scan_owned = []
         chooser.scan_pending = False
         chooser.run_task = Mock()

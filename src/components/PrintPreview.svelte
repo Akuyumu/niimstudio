@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, tick } from "svelte";
   import { isNative, nativeRequest } from "$/desktop/bridge";
   import { derived } from "svelte/store";
   import {
@@ -10,6 +10,7 @@
     rfidInfo,
     printJobActive,
     confirmedStock,
+    stockOverride,
   } from "$/stores";
   import * as effects from "$/utils/post_process";
   import {
@@ -39,7 +40,14 @@
   import { FileUtils } from "$/utils/file_utils";
   import AppModal from "$/components/basic/AppModal.svelte";
   import { validatePrintJob } from "$/utils/print_validation";
-  import { detectedStock, printerProfile, stockMatches, printableAreaNotice } from "$/desktop/media";
+  import {
+    detectedStock,
+    printerProfile,
+    stockMatches,
+    printableAreaNotice,
+    stockContext,
+    activeStockOverride,
+  } from "$/desktop/media";
 
   interface Props {
     labelProps: LabelProps;
@@ -85,16 +93,31 @@
   let currentPrintTask: AbstractPrintTask | undefined;
   let savedProps = $state<PreviewProps>({});
   let advancedOpen = $state(false);
+  let preparing = $state(false);
   let modalRef: AppModal;
   const automaticStock = $derived(
     isNative && $connectionState === "connected"
       ? detectedStock($rfidInfo.paperInfo, printerProfile($printerMeta, $printerInfo))
       : undefined,
   );
+  const manualStock = $derived(
+    isNative && $connectionState === "connected"
+      ? activeStockOverride(
+          $stockOverride,
+          stockContext(
+            $printerMeta?.model,
+            $rfidInfo.labelRfidInfo,
+            $rfidInfo.paperInfo,
+            printerProfile($printerMeta, $printerInfo),
+          ),
+        )
+      : undefined,
+  );
+  const loadedStock = $derived(manualStock ?? automaticStock ?? $confirmedStock);
 
   $effect(() => {
-    printJobActive.set(printState === "printing");
-    if (isNative) nativeRequest("status", { printing: printState === "printing" }).catch(console.error);
+    printJobActive.set(preparing || printState === "printing");
+    if (isNative) nativeRequest("status", { printing: preparing || printState === "printing" }).catch(console.error);
   });
   onDestroy(() => {
     printJobActive.set(false);
@@ -137,14 +160,14 @@
     FileUtils.printImageUrls(sources);
   };
 
-  const onPrint = async () => {
+  const performPrint = async () => {
     if (printState === "printing") return;
     const profile = printerProfile($printerMeta, $printerInfo);
     if (isNative && !profile) {
       error = "The printer model could not be identified. Reconnect before printing.";
       return;
     }
-    const stock = detectedStock($rfidInfo.paperInfo, profile) ?? $confirmedStock;
+    const stock = loadedStock;
     if (isNative && !stock) {
       error = "Choose the stock loaded in your printer before printing. Close Preview and select Label stock.";
       return;
@@ -155,8 +178,8 @@
       return;
     }
     const validation = validatePrintJob({
-      width: labelProps.size.width,
-      height: labelProps.size.height,
+      width: previewCanvas.width,
+      height: previewCanvas.height,
       direction: labelProps.printDirection,
       copies: quantity,
       pages: pagesTotal,
@@ -202,9 +225,9 @@
     $printerClient.on("printprogress", printListener);
     $printerClient.on("printpacketprogress", sendListener);
 
-    currentPrintTask = $printerClient.protocol.newPrintTask(printTaskName, opts);
-
+    currentPrintTask = undefined;
     try {
+      currentPrintTask = $printerClient.protocol.newPrintTask(printTaskName, opts);
       await currentPrintTask.printInit();
 
       for (let pageIdx = 0; pageIdx < pagesTotal; pageIdx++) {
@@ -229,7 +252,7 @@
     }
 
     try {
-      await endPrint();
+      if (currentPrintTask) await endPrint();
     } catch (e) {
       error = `${e}`;
       console.error(e);
@@ -239,9 +262,20 @@
     $printerClient.off("printprogress", printListener);
     $printerClient.off("printpacketprogress", sendListener);
     $printerClient.startHeartbeat();
+  };
 
-    if (printNow && !error && !cancelRequested) {
-      modalRef.hide();
+  const onPrint = async () => {
+    if (preparing || printState === "printing") return;
+    preparing = true;
+    try {
+      await generatePreviewData(currentPage);
+      await performPrint();
+    } catch (cause) {
+      error = cause instanceof Error ? cause.message : String(cause);
+    } finally {
+      preparing = false;
+      await tick();
+      if (printNow && !error && !cancelRequested && printState === "idle") modalRef.hide();
     }
   };
 
@@ -477,7 +511,7 @@
 <AppModal
   title={$tr("preview.title")}
   onClose={onModalClose}
-  dismissible={printState === "idle"}
+  dismissible={printState === "idle" && !preparing}
   bind:show
   bind:this={modalRef}>
   <div class="d-flex justify-content-center">
@@ -499,9 +533,12 @@
   </div>
 
   <div class="text-center">
-    {#if isNative && (automaticStock ?? $confirmedStock)?.printableAreaLimited}
+    {#if manualStock}<p class="small text-warning" data-testid="preview-manual-stock">
+        Manual size override: {manualStock.widthMm} × {manualStock.heightMm} mm. Check this matches the loaded roll.
+      </p>{/if}
+    {#if isNative && loadedStock?.printableAreaLimited}
       <p class="alert alert-info small" data-testid="preview-printable-area">
-        {printableAreaNotice((automaticStock ?? $confirmedStock)!)}
+        {printableAreaNotice(loadedStock!)}
       </p>
     {/if}
     {#if pagesTotal > 1}<div>Page {currentPage + 1} / {pagesTotal}</div>{/if}
@@ -686,6 +723,7 @@
             class="form-control"
             type="number"
             min="1"
+            max="65535"
             bind:value={quantity}
             onchange={() => updateSavedProp("quantity", quantity)} />
           <ParamLockButton
@@ -842,9 +880,10 @@
           title="How many identical copies to print. For multiple designs, this applies to each design."
           type="number"
           min="1"
+          max="65535"
           step="1"
           bind:value={quantity}
-          disabled={printState !== "idle"} />
+          disabled={preparing || printState !== "idle"} />
       </label>
       <details class="studio-print-advanced" data-testid="print-advanced" bind:open={advancedOpen}>
         <summary>Advanced</summary>
@@ -852,7 +891,9 @@
           Optional adjustments for images, print darkness and alignment. Usually you can leave these alone. Printer
           protocol is selected automatically.
         </p>
-        {#if advancedOpen}<fieldset disabled={printState !== "idle"} class="studio-print-advanced-controls">
+        {#if advancedOpen}<fieldset
+            disabled={preparing || printState !== "idle"}
+            class="studio-print-advanced-controls">
             {@render advancedControls()}
           </fieldset>{/if}
       </details>
@@ -860,7 +901,11 @@
       {@render advancedControls()}
     {/if}
 
-    <button type="button" class="btn btn-secondary" onclick={() => modalRef.hide()}>{$tr("preview.close")}</button>
+    <button
+      type="button"
+      class="btn btn-secondary"
+      disabled={preparing || printState !== "idle"}
+      onclick={() => modalRef.hide()}>{$tr("preview.close")}</button>
 
     {#if printState !== "idle"}
       <button
@@ -886,7 +931,7 @@
       type="button"
       class="btn btn-primary"
       data-action="print-label"
-      disabled={$disconnected || printState !== "idle"}
+      disabled={$disconnected || preparing || printState !== "idle"}
       onclick={onPrint}>
       {#if $disconnected}
         {$tr("preview.not_connected")}

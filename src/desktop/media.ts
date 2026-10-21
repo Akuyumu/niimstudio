@@ -35,6 +35,31 @@ export interface DetectedStock extends StockSize {
   printableAreaLimited?: boolean;
 }
 
+export type StockOverride = { context: string; stock: DetectedStock };
+
+/** Session-only identity: a manual override must not leak to a changed roll/report. */
+export function stockContext(
+  model: string | undefined,
+  tag: RfidInfo | undefined,
+  paper: PaperInfo | undefined,
+  profile: PrinterProfile | undefined,
+): string {
+  return JSON.stringify([
+    model,
+    tag?.tagPresent,
+    tag?.uuid,
+    tag?.serialNumber,
+    tag?.barCode,
+    tag?.consumablesType,
+    paper,
+    profile,
+  ]);
+}
+
+export function activeStockOverride(override: StockOverride | undefined, context: string): DetectedStock | undefined {
+  return override?.context === context ? override.stock : undefined;
+}
+
 export const stockSizes = [
   { id: "30x12", widthMm: 30, heightMm: 12, shape: "rounded_rect" },
   { id: "40x12", widthMm: 40, heightMm: 12, shape: "rounded_rect" },

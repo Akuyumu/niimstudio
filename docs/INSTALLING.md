@@ -127,6 +127,14 @@ Update notifications do not install anything until **Update now** is selected.
 You can keep using an older release; a failed download/validation leaves the
 current managed installation intact.
 
+Release candidates use explicit tags such as **v0.2.0-rc.1** and are marked
+prerelease, never latest stable. Opt in with the candidate's installer and
+`--version v0.2.0-rc.1`; Flatpak still additionally requires `--flatpak`. This does
+not change ordinary stable users' updates. A managed candidate can be offered its
+final stable version later, but not older stable versions or subsequent candidates.
+Back up/export important labels before testing prerelease software. Keep candidate
+source checkouts separate from a pinned stable checkout.
+
 For a stable **source checkout**, clone a release tag in a separate directory,
 then follow the source build steps in README:
 
