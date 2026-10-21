@@ -1,10 +1,12 @@
 """BlueZ transport: no browser Bluetooth flags or root daemon required."""
 
+import threading
 import time
 
 from gi.repository import Gio, GLib
 
 SERVICE_UUID = "e7810a71-73ae-499d-8c15-faa9aef0c3f2"
+CHANNEL_UUID = "bef8d6c9-9c21-4c9e-b632-bd58c1009f9f"
 DEVICE = "org.bluez.Device1"
 ADAPTER = "org.bluez.Adapter1"
 CHARACTERISTIC = "org.bluez.GattCharacteristic1"
@@ -37,6 +39,8 @@ def is_printer(properties):
 class BlueZ:
     def __init__(self):
         self.bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+        self.discovery_owners = {}
+        self.le_filters = set()
 
     def call(self, path, interface, method, parameters=None, timeout=10000):
         result = self.bus.call_sync(
@@ -83,7 +87,7 @@ class BlueZ:
             if props is None or not props.get("Powered"):
                 continue
             try:
-                self.call(path, ADAPTER, "StartDiscovery")
+                self.acquire_scan(path)
                 owned.append(path)
             except GLib.Error as error:
                 errors.append(str(error))
@@ -93,20 +97,89 @@ class BlueZ:
             )
         return owned
 
+    def acquire_scan(self, adapter, le_only=False):
+        if adapter in self.discovery_owners:
+            self.discovery_owners[adapter] += 1
+            return
+        if le_only:
+            self.call(
+                adapter,
+                ADAPTER,
+                "SetDiscoveryFilter",
+                GLib.Variant("(a{sv})", ({"Transport": GLib.Variant("s", "le")},)),
+            )
+            self.le_filters.add(adapter)
+        try:
+            self.call(adapter, ADAPTER, "StartDiscovery")
+        except Exception:
+            if adapter in self.le_filters:
+                self.le_filters.remove(adapter)
+                try:
+                    self.call(adapter, ADAPTER, "SetDiscoveryFilter", GLib.Variant("(a{sv})", ({},)))
+                except GLib.Error:
+                    pass
+            raise
+        self.discovery_owners[adapter] = 1
+
+    def start_connection_scan(self, device):
+        """Refresh a cached LE address before Connect, as Bleak does. No bond changes."""
+        properties = self.objects().get(device, {}).get(DEVICE, {})
+        adapter = properties.get("Adapter") or device.rsplit("/dev_", 1)[0]
+        fresh = threading.Event()
+
+        def changed(_bus, _sender, _path, _interface, _signal, parameters):
+            interface, values, _invalid = unpack(parameters)
+            if interface == DEVICE and any(
+                key in values for key in ("RSSI", "ManufacturerData", "ServiceData", "AdvertisingData")
+            ):
+                fresh.set()
+
+        subscription = self.bus.signal_subscribe(
+            "org.bluez",
+            "org.freedesktop.DBus.Properties",
+            "PropertiesChanged",
+            device,
+            None,
+            Gio.DBusSignalFlags.NONE,
+            changed,
+        )
+        try:
+            self.acquire_scan(adapter, le_only=True)
+            # GIO dispatches on the app's main context; the connection worker is
+            # allowed to wait without blocking GTK or its pairing agent.
+            fresh.wait(5)
+            return [adapter]
+        finally:
+            self.bus.signal_unsubscribe(subscription)
+
     def stop_scan(self, owned):
         # Release only this app's discovery sessions, not another app's scan.
         for path in owned:
+            owners = self.discovery_owners.get(path, 0)
+            if owners > 1:
+                self.discovery_owners[path] = owners - 1
+                continue
+            if not owners:
+                continue
+            del self.discovery_owners[path]
             try:
                 self.call(path, ADAPTER, "StopDiscovery")
             except GLib.Error:
                 pass
+            if path in self.le_filters:
+                self.le_filters.remove(path)
+                try:
+                    self.call(path, ADAPTER, "SetDiscoveryFilter", GLib.Variant("(a{sv})", ({},)))
+                except GLib.Error:
+                    pass
 
 
 class BluetoothTransport:
-    def __init__(self, bluez, on_data, on_disconnect):
+    def __init__(self, bluez, on_data, on_disconnect, on_progress=None):
         self.bluez = bluez
         self.on_data = on_data
         self.on_disconnect = on_disconnect
+        self.on_progress = on_progress or (lambda _message: None)
         self.device = None
         self.channel = None
         self.notify_channel = None
@@ -119,8 +192,34 @@ class BluetoothTransport:
         if classic_only(properties):
             raise RuntimeError("This is the classic Bluetooth Serial Port entry, not the NIIMBOT Bluetooth LE entry.")
         self.device = device
+        scan = []
         try:
-            self.bluez.call(device, DEVICE, "Connect", timeout=25000)
+            self.on_progress("Refreshing the printer's Bluetooth LE advertisement…")
+            scan = self.bluez.start_connection_scan(device)
+            self.on_progress("Opening Bluetooth LE link… This can take up to 25 seconds.")
+            try:
+                for attempt in range(2):
+                    try:
+                        self.bluez.call(device, DEVICE, "Connect", timeout=25000)
+                        break
+                    except Exception as error:
+                        transient = "le-connection-abort-by-local" in str(error) or (
+                            isinstance(error, GLib.Error)
+                            and any(word in str(error).lower() for word in ("timeout", "timed out"))
+                        )
+                        if attempt or not transient:
+                            raise
+                        # A timed-out D-Bus call may leave a controller request
+                        # pending. Cancel only our target before one bounded retry.
+                        self.bluez.call(device, DEVICE, "Disconnect", timeout=5000)
+                        self.on_progress("Bluetooth link was interrupted. Retrying once without pairing…")
+                        time.sleep(0.5)
+            except Exception as error:
+                raise RuntimeError(
+                    f"Bluetooth link connection failed before GATT service discovery: {error}. "
+                    "No NIIMBOT handshake or printer command was sent."
+                ) from error
+            self.on_progress("Bluetooth link opened. Waiting for printer services…")
             deadline = time.monotonic() + 20
             while time.monotonic() < deadline:
                 objects = self.bluez.objects()
@@ -142,7 +241,12 @@ class BluetoothTransport:
                 if CHARACTERISTIC in interfaces and interfaces[CHARACTERISTIC].get("Service") in services
             ]
             # Same preferred combination as NiimBlue; also allow split TX/RX.
-            tx = next(((path, p) for path, p in channels if "write-without-response" in p.get("Flags", [])), None)
+            combined = [
+                (path, p) for path, p in channels if {"notify", "write-without-response"}.issubset(p.get("Flags", []))
+            ]
+            tx = next(((path, p) for path, p in combined if p.get("UUID", "").lower() == CHANNEL_UUID), None)
+            tx = tx or next(iter(combined), None)
+            tx = tx or next(((path, p) for path, p in channels if "write-without-response" in p.get("Flags", [])), None)
             if tx is None:
                 tx = next(((path, p) for path, p in channels if "write" in p.get("Flags", [])), None)
             rx = next(
@@ -166,10 +270,14 @@ class BluetoothTransport:
                 Gio.DBusSignalFlags.NONE,
                 self._properties_changed,
             )
+            self.on_progress("Printer service found. Enabling Bluetooth responses…")
             self.bluez.call(self.notify_channel, CHARACTERISTIC, "StartNotify")
         except Exception:
             self.close()
             raise
+        finally:
+            if scan:
+                self.bluez.stop_scan(scan)
 
     def _properties_changed(self, connection, sender, path, interface, signal, parameters):
         iface, changed, _invalidated = unpack(parameters)

@@ -511,10 +511,18 @@ class StudioApplication(Adw.Application):
             def disconnected(reason):
                 GLib.idle_add(self.transport_event, generation, {"event": "disconnect", "reason": reason})
 
+            def progress(message):
+                def display():
+                    if generation == self.generation and self.chooser and not self.chooser.closed:
+                        self.chooser.set_status(message)
+                    return GLib.SOURCE_REMOVE
+
+                GLib.idle_add(display)
+
             transport = (
                 SerialTransport(data_received, disconnected)
                 if device["kind"] == "serial"
-                else BluetoothTransport(self.ensure_bluez(), data_received, disconnected)
+                else BluetoothTransport(self.ensure_bluez(), data_received, disconnected, progress)
             )
             self.transport = transport
             self.selected_device = device
@@ -791,6 +799,12 @@ class StudioApplication(Adw.Application):
             "stock-detected",
             "connection-failure",
             "settings",
+            "settings-failure",
+            "settings-unavailable",
+            "crisp-text",
+            "print-advanced",
+            "stock-compatible",
+            "stock-printable-area",
         }
         directory = os.environ.get("NIIMSTUDIO_TEST_ARTIFACTS")
         if name not in allowed or not directory:
