@@ -9,7 +9,9 @@ Stable release; v0.1.3 remains available as the previous stable version.
 - Explicit, session-scoped stock override and correctly available 50 mm stock presets.
 - Simple print preview, Advanced tooltips, safe setup-failure recovery and offset validation.
 - Sharper display zoom, expanding font picker and aligned transport-neutral Devices controls.
-- Separate candidate/stable publication and update protections. No physical print verification claimed.
+- Separate candidate/stable publication and update protections. Release automation
+  performs no physical print; a user later confirmed one successful B1 Pro print
+  (transport and label details not recorded).
 
 ## Inherited NiimBlue changelog
 

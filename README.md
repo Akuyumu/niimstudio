@@ -167,12 +167,13 @@ one-launch WebKit fallback, not a change to your desktop/driver settings.
 
 **This app is vibe-coded: it was built with AI assistance and iterated through
 hands-on feedback.** Automated checks and independent code-decoding tests are
-included, but that is not a substitute for testing a physical printer.
+included. A user-confirmed physical B1 Pro print is now recorded; the print's
+transport was not recorded, so per-connection print coverage is still being built.
 
 The current build has been exercised on Omarchy. Support for other modern Linux
 desktops is designed into the launcher and theme handling; it is not a claim that
-every distribution or printer model has been tested. USB/BLE printing, real
-pairing prompts, and printer-fault recovery still need the
+every distribution or printer model has been tested. Per-connection printing,
+real pairing prompts, and printer-fault recovery still need the
 [hardware acceptance checklist](docs/HARDWARE.md). Full proprietary NIIMBOT-app
 parity, its paid/cloud template catalog, classic Bluetooth SPP, and CUPS integration
 are **not** claimed. [Current status and test coverage](docs/STATUS.md).

@@ -7,26 +7,26 @@
 2. Open NiimStudio and select **Devices**.
 3. For USB, use a **data-capable** cable and select the detected serial port.
    For Bluetooth, turn Bluetooth on in your desktop settings first, then **Scan for printers**.
-4. Select the printer. BLE often works with **Connect** without pairing. Use
-    **Pair** is offered only after an explicit authentication failure; answer any native PIN/passkey prompt using
-    the printer's documented code. No default PIN is assumed.
+4. Select the printer. BLE often works with **Connect** without pairing. **Pair**
+   is offered only after an explicit authentication failure; answer any native
+   PIN/passkey prompt using the printer's documented code. No default PIN is assumed.
 5. The app reads the printer's model/capabilities and paper information. For a
    recognized B1 Pro it selects 300 DPI and top feed. Valid reported dimensions
    automatically size an empty/new canvas; existing artwork gets a confirmation
    first. If usable dimensions are not reported, choose the size on the roll
    packaging in **Label stock**. There are no raw size/DPI/direction controls in
-    the desktop UI. A B1 Pro supports 20–50 mm label widths: physical roll width is
-    not printhead width. **50×30 mm is supported**, with non-printable edge margins.
-    The printable canvas uses the reported head width (576 px on the tested unit)
-    or the library's conservative 567 px fallback, byte-aligned downwards. The
-    picker hides presets outside the known physical media limits. Choose the
-    actual roll size, not the closest-looking preset.
+   the desktop UI. A B1 Pro supports 20–50 mm label widths: physical roll width is
+   not printhead width. **50×30 mm is supported**, with non-printable edge margins.
+   The printable canvas uses the reported head width (576 px on the tested unit)
+   or the library's conservative 567 px fallback, byte-aligned downwards. The
+   picker hides presets outside the known physical media limits. Choose the
+   actual roll size, not the closest-looking preset.
 6. Open **Preview**, check the image and margins, and set **Copies**. The printer's
-    protocol is selected automatically. Optional image processing, print darkness,
-    speed, material and alignment controls are under **Advanced**, with plain-language
-    hover descriptions. Ordinary printing needs no protocol-task selection.
+   protocol is selected automatically. Optional image processing, print darkness,
+   speed, material and alignment controls are under **Advanced**, with plain-language
+   hover descriptions. Ordinary printing needs no protocol-task selection.
 7. Choose one copy and explicitly press **Print**. Verify the physical result
-    before attempting batches.
+   before attempting batches.
 
 The app is never run as root and does not print, pair, reset a printer, or
 flash firmware automatically. Canceling a batch stops **remaining pages** after
@@ -131,7 +131,10 @@ also caught a brief connection followed by `le-connection-abort-by-local` before
 service discovery. [Bleak's BlueZ backend](https://github.com/hbldh/bleak/blob/develop/bleak/backends/bluezdbus/client.py)
 explicitly handles that transient error.
 
-The user subsequently confirmed Bluetooth works through the actual application.
+The user subsequently confirmed Bluetooth works through the actual application,
+and later confirmed **at least one successful physical print on the B1 Pro**. The
+transport and label details for that print were not recorded, so do not relabel
+both USB and BLE print paths as fully verified.
 The native transport now refreshes the LE advertisement, shares/refcounts only
 its own chooser/connection discovery session, prefers the known combined
 NIIMBOT characteristic, and retries one local-abort/timeout after canceling its
@@ -146,7 +149,8 @@ The handshake used the pinned NiimBlueLib 0.47.0 over the actual native GATT
 transport, not a newly implemented packet stack. Every diagnostic link was cleaned
 up. USB was not opened or closed by the tests. No Pair, print, reset, calibration,
 or setting-write commands were sent; paper-info opcode 0x59 was deliberately
-excluded from this connection-only probe. Physical BLE printing, power-cycle and
+excluded from this connection-only probe. The separate user-confirmed physical
+print above supersedes the earlier connection-only limitation. Power-cycle and
 mid-print radio-loss tests remain unverified.
 
 `btmon` is installed on the test machine but requires additional privileges to
@@ -156,7 +160,7 @@ Only if failures recur should a short, user-approved `btmon -w` capture be made
 and opened in Wireshark. Such captures can include device identifiers and private
 Bluetooth traffic; do not attach them publicly without review.
 
-## Printer settings (development checkout)
+## Printer settings
 
 Open **Settings** at the top right for power/connection sounds, sleep/auto-off and
 the app's reconnect preference. Printer changes are sent only on a user action
@@ -191,6 +195,7 @@ NiimBlueLib version, without publishing full Bluetooth addresses by default.
 
 - [ ] USB connect / negotiated model and print task / single physical label
 - [ ] BLE discovery / connect / single physical label
+- [x] User-confirmed physical B1 Pro print (transport and label details not recorded)
 - [ ] Optional pairing / PIN / passkey / confirmation / cancellation
 - [ ] 300-DPI dimensions, print direction, offsets, density, gaps/black marks
 - [ ] Reported stock auto-setup, non-reporting-roll picker, safe roll-change prompt
@@ -200,7 +205,8 @@ NiimBlueLib version, without publishing full Bluetooth addresses by default.
 - [ ] Restart: draft and named templates remain available
 - [ ] Theme switch: native chooser and editor update; output stays black/white
 
-Only the BLE connection/handshake/heartbeat stages described above have agent-run
-hardware validation; the user separately confirms USB connection. The combined
-connect-and-print checklist items are still unchecked because physical prints
-have not been verified. Do not extrapolate these results to all printer models.
+One physical B1 Pro print is user-confirmed. Because its transport was not
+recorded, the separate USB/BLE connect-and-print items remain unchecked. The
+BLE connection/handshake/heartbeat stages also have agent-run hardware validation,
+and the user separately confirms USB connection. Do not extrapolate any of these
+results to other printer models or claim every fault path is covered.

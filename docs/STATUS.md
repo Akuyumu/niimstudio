@@ -35,6 +35,9 @@
   matrix as stable releases. Publication is always prerelease and never latest;
   candidate installs can later be offered final stable, without downgrading to a
   previous stable version.
+- **Post-release acceptance:** the user confirmed a successful physical print on
+  their B1 Pro after v0.2.0. The transport and label details were not recorded, so
+  per-transport print coverage and fault behavior remain separate checklist items.
 
 ## v0.2.0 settings and roll-read work
 
@@ -189,7 +192,9 @@
   undo/redo, preview/encoding, palette application, draft storage, native chooser,
   invalid-save protection, quota rollback, template drawer/search/save, and the
   formatting buttons, link entry/editing, invalid EAN rejection, code-insert
-  cancellation, and native chooser cancellation without an error toast. No physical printing.
+  cancellation, and native chooser cancellation without an error toast. The smoke
+  profile performs no physical printing; separate user hardware confirmation is
+  recorded below.
 - Synthetic B1 Pro metadata exercises the stock picker, automatic empty-canvas
   setup, Auto badge, existing-design confirmation, resize undo/redo, mismatch and
   unknown-stock print guards, and visual-only rounded print-preview corners.
@@ -211,17 +216,16 @@
 
 ## Still needs real hardware / user acceptance
 
-A B1 Pro's classic/BLE advertisements have been observed and the user confirms
-USB connection works. Agent-run BLE link/handshake/heartbeat cycles now pass and
-the user confirms Bluetooth works through the restarted GUI. Physical printing
-and hardware acceptance for the corrected height remain outstanding.
-USB/BLE printing, BlueZ pairing prompts with real hardware, battery/RFID accuracy
-and automatic sizing from real media reports,
-reconnect behavior under printer faults, and representative real-media results
-need the checklist in `HARDWARE.md`. Mock tests are not substitutes for these.
-Theme parsing and initial application are automated-tested; a live desktop
-theme switch should be included in user acceptance without changing the theme
-silently during development.
+A B1 Pro's classic/BLE advertisements have been observed. The user confirms USB
+connection, Bluetooth connection through the restarted GUI, and a successful
+physical print on the B1 Pro. The print's transport and label details were not
+recorded. Agent-run BLE link/handshake/heartbeat cycles also pass. Per-transport
+print coverage, BlueZ pairing prompts with real hardware, battery/RFID accuracy,
+automatic sizing from real media reports, behavior under printer faults, and
+representative real-media results still need the checklist in `HARDWARE.md`.
+Mock tests are not substitutes for these. Theme parsing and initial application are
+automated-tested; a live desktop theme switch should be included in future acceptance
+without changing the theme silently during development.
 
 ## Not claimed / not included
 
@@ -241,9 +245,12 @@ silently during development.
 
 ## Next priorities
 
-1. Verify a real B1 Pro over USB, then BLE, using one small label at a time.
-2. Fix device-specific problems based on packet logs, preserving protocol reuse.
-3. Validate label stock profiles, saved-library/restart workflows, and batch UX.
+1. Record which transport was used for the confirmed B1 Pro print; then verify both
+   USB and BLE print paths independently, one small label at a time.
+2. Fix device-specific problems based on user issue reports and redacted logs,
+   preserving protocol reuse.
+3. Validate label stock profiles, saved-library/restart workflows, and batch UX,
+   including feedback from real users.
 4. Add native backup/restore, test imported PDFs, improve accessible tool labels,
    and refine the template drawer from actual usage feedback.
 5. The packaged release is early software, not complete hardware verification.
