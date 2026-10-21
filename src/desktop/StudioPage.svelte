@@ -6,6 +6,7 @@
   import TemplateLibrary from "$/desktop/TemplateLibrary.svelte";
   import SidebarIcon from "$/desktop/SidebarIcon.svelte";
   import MdIcon from "$/components/basic/MdIcon.svelte";
+  import StudioSettings from "$/desktop/StudioSettings.svelte";
   import { nativeRequest, onNativeEvent } from "$/desktop/bridge";
   let diagnostics = $state(false);
   let designer = $state<LabelDesigner>();
@@ -66,6 +67,7 @@
             data-action="save-template"
             title="Save as template · Ctrl+S"><MdIcon icon="bookmark_add" /> Save as template</button>
           <div class="studio-printer"><PrinterConnector /></div>
+          <StudioSettings />
         </div>
       </header>
     {/snippet}

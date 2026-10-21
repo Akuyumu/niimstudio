@@ -8,6 +8,7 @@ import {
   stockFromSize,
   stockMatches,
   stockSizes,
+  rollStockKey,
 } from "../src/desktop/media.ts";
 
 const meta = getPrinterMetaByModel(PrinterModel.B1_PRO)!;
@@ -80,4 +81,22 @@ test("preset stock filters excessive width and does not expose custom resolution
   assert.equal(stockFromSize({ ...stock, widthMm: 50 }, profile), undefined);
   assert.deepEqual(stockFromSize(stock, offlineProfile)!.size, { width: 320, height: 240 });
   assert.equal(stockFromSize({ ...stock, heightMm: -1 }, profile), undefined);
+});
+
+test("remembered roll keys require a reported product identity and ignore private serial/UUID", () => {
+  const tag = {
+    tagPresent: true,
+    uuid: "one",
+    serialNumber: "private",
+    barCode: " SKU ",
+    allPaper: 100,
+    usedPaper: 0,
+    consumablesType: LabelType.WithGaps,
+  };
+  const key = rollStockKey("B1_PRO", tag);
+  assert.equal(key, rollStockKey("B1_PRO", { ...tag, uuid: "two", serialNumber: "different" }));
+  assert.notEqual(key, rollStockKey("B1", tag));
+  assert.equal(rollStockKey("B1_PRO", { ...tag, tagPresent: false }), undefined);
+  assert.equal(rollStockKey("B1_PRO", { ...tag, barCode: "" }), undefined);
+  assert.equal(rollStockKey(undefined, tag), undefined);
 });

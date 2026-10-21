@@ -5,22 +5,37 @@ import {
   DisconnectEvent,
   NiimbotAbstractClient,
   RawPacketSentEvent,
+  RfidInfoFetchedEvent,
   Utils,
   type ConnectionInfo,
 } from "@mmote/niimbluelib";
 import { nativeRequest, onNativeEvent, reportConnectionLoss } from "./bridge";
+import { mediaReadReport, readMedia } from "./media_reads";
 
 export class NativeNiimbotClient extends NiimbotAbstractClient {
   private connected = false;
   private established = false;
   private unlisten?: () => void;
+  private transportKind?: string;
+
+  getTransportKind() {
+    return this.transportKind;
+  }
+
+  override async fetchRfidInfo() {
+    const { info, errors } = await readMedia(this.protocol);
+    this.rfidInfo = info;
+    mediaReadReport.set(errors);
+    this.emit("rfidinfofetched", new RfidInfoFetchedEvent(info));
+    return info;
+  }
 
   async connect(options?: { automatic?: boolean }): Promise<ConnectionInfo> {
     if (this.connected) await this.disconnect();
     this.unlisten?.();
     this.unlisten = onNativeEvent((message) => {
       if (message.event === "data" && message.data) this.processRawPacket(new Uint8Array(message.data));
-      if (message.event === "disconnect") this.markDisconnected();
+      if (message.event === "disconnect" && this.connected) this.markDisconnected();
     });
     try {
       const device = await nativeRequest<{ name: string; kind: string }>(
@@ -28,15 +43,22 @@ export class NativeNiimbotClient extends NiimbotAbstractClient {
         { automatic: options?.automatic === true },
         options?.automatic ? 90_000 : 600_000,
       );
+      this.transportKind = device.kind;
       this.connected = true;
       await this.negotiateAndGetPrinterInfo(() => void this.disconnect({ intentional: true }));
       const info: ConnectionInfo = {
         deviceName: device.name,
         result: this.printerInfo.connectResult ?? ConnectResult.FirmwareErrors,
       };
-      if ([ConnectResult.Connected, ConnectResult.ConnectedNew, ConnectResult.ConnectedV3].includes(info.result)) {
-        await nativeRequest("remember").catch(console.warn);
+      if (
+        !this.connected ||
+        ![ConnectResult.Connected, ConnectResult.ConnectedNew, ConnectResult.ConnectedV3].includes(info.result)
+      ) {
+        throw new Error(
+          `Printer handshake did not establish a connection (${ConnectResult[info.result] ?? info.result}).`,
+        );
       }
+      await nativeRequest("remember").catch(console.warn);
       this.established = true;
       this.emit("connect", new ConnectEvent(info));
       return info;
@@ -50,6 +72,8 @@ export class NativeNiimbotClient extends NiimbotAbstractClient {
     const wasConnected = this.connected;
     this.connected = false;
     this.established = false;
+    this.transportKind = undefined;
+    mediaReadReport.set({});
     this.stopHeartbeat();
     this.unlisten?.();
     this.unlisten = undefined;

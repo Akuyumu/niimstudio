@@ -75,6 +75,7 @@ def validate_message(message):
         "log",
         "remember",
         "knownDevice",
+        "setReconnectPolicy",
         "testSnapshot",
         "testDismissDevices",
     }:
@@ -424,6 +425,19 @@ class StudioApplication(Adw.Application):
                 self.choose_printer(request_id, automatic=request.get("automatic") is True)
             elif operation == "knownDevice":
                 self.reply(request_id, self.history.info())
+            elif operation == "setReconnectPolicy":
+                enabled = request.get("enabled")
+                if type(enabled) is not bool:
+                    raise ValueError("Reconnect policy must be true or false")
+                previous = self.history.auto_reconnect
+                self.history.auto_reconnect = enabled
+                try:
+                    self.history.save()
+                except OSError:
+                    self.history.auto_reconnect = previous
+                    raise
+                self.reply(request_id, {"enabled": enabled})
+                self.send({"event": "reconnect-policy", "enabled": enabled})
             elif operation == "testDismissDevices":
                 opened = self.chooser is not None
                 if opened:
@@ -477,6 +491,10 @@ class StudioApplication(Adw.Application):
         def canceled():
             self.connecting = False
             self.chooser = None
+            self.generation += 1
+            transport, self.transport = self.transport, None
+            if transport:
+                self.run_task(transport.close)
             self.reply(request_id, cancelled=True)
 
         def selected(device):
@@ -484,7 +502,6 @@ class StudioApplication(Adw.Application):
                 self.reply(request_id, error="Hardware access is disabled in smoke tests")
                 self.connecting = False
                 return
-            self.chooser = None
             self.generation += 1
             generation = self.generation
 
@@ -503,10 +520,17 @@ class StudioApplication(Adw.Application):
             self.selected_device = device
 
             def opened(_value):
+                if generation != self.generation:
+                    return
                 self.connecting = False
+                if self.chooser:
+                    self.chooser.connection_succeeded()
+                    self.chooser = None
                 self.reply(request_id, {"name": device["name"], "kind": device["kind"]})
 
             def failed(error):
+                if generation != self.generation:
+                    return
                 self.connecting = False
                 self.transport = None
                 self.run_task(transport.close)
@@ -514,7 +538,10 @@ class StudioApplication(Adw.Application):
                     error = RuntimeError(
                         "USB permission denied. See docs/HARDWARE.md for per-device udev access; do not run NiimStudio as root."
                     )
-                self.reply(request_id, error=error)
+                if self.chooser and not self.chooser.closed:
+                    self.chooser.connection_failed(error, device["kind"])
+                else:
+                    self.reply(request_id, error=error)
 
             self.run_task(lambda: transport.open(device["id"]), opened, failed)
 
@@ -762,6 +789,8 @@ class StudioApplication(Adw.Application):
             "print-preview",
             "stock-picker",
             "stock-detected",
+            "connection-failure",
+            "settings",
         }
         directory = os.environ.get("NIIMSTUDIO_TEST_ARTIFACTS")
         if name not in allowed or not directory:

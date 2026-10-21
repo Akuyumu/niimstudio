@@ -1,5 +1,11 @@
 /** Read-only printer metadata. Never infer a roll size from its printer model. */
-import { LabelType, type PaperInfo, type PrinterInfo, type PrinterModelMeta } from "@mmote/niimbluelib";
+import { LabelType, type PaperInfo, type PrinterInfo, type PrinterModelMeta, type RfidInfo } from "@mmote/niimbluelib";
+
+export function rollStockKey(model: string | undefined, tag: RfidInfo | undefined): string | undefined {
+  const product = tag?.barCode?.trim();
+  if (!model || !tag?.tagPresent || !product || product.length > 128) return;
+  return JSON.stringify([model, product, tag.consumablesType]);
+}
 
 export type StockShape = "rounded_rect" | "rect" | "circle";
 export interface PrinterProfile {

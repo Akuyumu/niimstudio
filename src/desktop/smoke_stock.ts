@@ -10,6 +10,7 @@ import type { UndoRedo } from "$/utils/undo_redo";
 import { LabelDesignerObjectHelper } from "$/utils/label_designer_object_helper";
 import { nativeRequest } from "$/desktop/bridge";
 import { detectedStock, printerProfile, stockMatches } from "$/desktop/media";
+import { runSettingsSmoke } from "$/desktop/smoke_settings";
 
 const settle = async () => {
   await tick();
@@ -85,6 +86,7 @@ export async function runStockSmoke(context: {
     !document.querySelector(".modal.show");
   const automaticStockBadge =
     document.querySelector('[data-action="label-stock"]')?.textContent?.includes("Auto") === true;
+  const settingsResults = await runSettingsSmoke();
 
   LabelDesignerObjectHelper.addText(context.canvas, "Keep my design");
   context.undo.push(context.canvas, context.exportLabel().label);
@@ -144,6 +146,42 @@ export async function runStockSmoke(context: {
   await click(".modal.show .btn-close");
   await waitFor(() => !document.querySelector(".modal.show"), "closed final preview");
 
+  const tag = {
+    tagPresent: true,
+    uuid: "synthetic-roll-one",
+    barCode: "TEST-40x30",
+    serialNumber: "synthetic",
+    allPaper: 100,
+    usedPaper: 0,
+    consumablesType: LabelType.WithGaps,
+  };
+  rfidInfo.set({ labelRfidInfo: tag, paperInfo: { valid: false } });
+  await settle();
+  const rollReadExplained =
+    document.querySelector('[data-testid="roll-read-status"]')?.textContent?.includes("RFID roll tag detected") ===
+    true;
+  document.querySelector<HTMLInputElement>('[data-setting="remember-roll"]')!.click();
+  await click('[data-stock-id="40x30"]');
+  await settle();
+  rfidInfo.set({ labelRfidInfo: { ...tag, uuid: "synthetic-roll-two" }, paperInfo: { valid: false } });
+  await settle();
+  const rememberedRollWorks =
+    document.querySelector('[data-action="label-stock"]')?.textContent?.includes("Saved roll") === true &&
+    get(confirmedStock)?.size.width === 472;
+  rfidInfo.set({
+    labelRfidInfo: { ...tag, uuid: "synthetic-roll-two" },
+    paperInfo: { ...paper, paperWidth: 200, paperWidthPixel: 2362 },
+  });
+  await settle();
+  const rememberedRollCannotOverrideConflictingReport =
+    !!document.querySelector('[data-stock-id="40x30"]') && !get(confirmedStock);
+  rfidInfo.set({ labelRfidInfo: { ...tag, uuid: "synthetic-roll-two" }, paperInfo: { valid: false } });
+  await settle();
+  await click('[data-action="change-saved-roll"]');
+  await settle();
+  const rememberedRollCanBeChanged = !!document.querySelector('[data-stock-id="40x30"]');
+  await click(".modal.show .btn-close");
+
   connectionState.set("disconnected");
   printerMeta.set(previous.meta);
   printerInfo.set(previous.info);
@@ -164,5 +202,10 @@ export async function runStockSmoke(context: {
     confirmedStockApplied,
     stockResizeUndoWorks,
     unknownStockCannotPrint,
+    rollReadExplained,
+    rememberedRollWorks,
+    rememberedRollCannotOverrideConflictingReport,
+    rememberedRollCanBeChanged,
+    ...settingsResults,
   };
 }

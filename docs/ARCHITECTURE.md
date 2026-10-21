@@ -30,6 +30,17 @@ modals keep their existing animation behavior. `--software-rendering` sets only
 the current process's WebKit acceleration policy; it is not persisted and never
 disables sandboxing. Overlay regression tests sample real editor/viewport geometry.
 
+Development printer controls live in `StudioSettings.svelte`, not the native
+connector's legacy dropdown. `printer_settings.ts` contains read/validate/write/
+read-back helpers using NiimBlueLib only. Unknown sound/sleep values are not guessed;
+sleep mode 4 remains explicitly firmware-dependent. The native reconnect setter
+persists the app preference atomically or restores its previous value on failure.
+`media_reads.ts` preserves individual query errors while reusing the protocol's
+parsers. `roll_stock.ts` persists only explicitly chosen preset IDs keyed by
+model/product/material identity; private tag/roll serials are not keys. A parsed,
+conflicting paper report cannot be bypassed by a remembered size. These features
+are development work until accepted and released.
+
 Launch and quit are deliberately staged. `scripts/niimstudio` selects a system
 interpreter and delegates to `scripts/launch.py`, which chooses the system WebKit or
 the optional extracted runtime without importing GI on the launcher path. That

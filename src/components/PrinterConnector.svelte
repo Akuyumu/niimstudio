@@ -33,6 +33,7 @@
   import { NativeNiimbotClient } from "$/desktop/client";
   import { ReconnectController } from "$/desktop/reconnect";
   import { isUserCancelled } from "$/desktop/cancellation";
+  import { connectionFeedback } from "$/desktop/connection_feedback";
 
   let connectionType = $state<ConnectionType>("bluetooth");
   let featureSupport = $state<AvailableTransports>({ webBluetooth: false, webSerial: false, capacitorBle: false });
@@ -42,6 +43,7 @@
   let unlisten: (() => void) | undefined;
   let autoAllowed = true;
   let hasRememberedDevice = false;
+  let failure = $state<ReturnType<typeof connectionFeedback>>();
 
   const percentage = (cur?: number, total?: number) => {
     if (cur === undefined || total === undefined) {
@@ -52,13 +54,17 @@
   };
 
   const onConnectClicked = async (automatic = false) => {
-    if (!automatic) reconnect?.pause();
+    if (!automatic) {
+      reconnect?.pause();
+      failure = undefined;
+    }
     initClient(connectionType);
     connectionState.set("connecting");
 
     try {
       if ($printerClient instanceof NativeNiimbotClient) {
         await $printerClient.connect({ automatic });
+        failure = undefined;
         const history = await nativeRequest<{ enabled: boolean; device: unknown }>("knownDevice");
         hasRememberedDevice = !!history.device;
         autoAllowed = history.enabled;
@@ -75,6 +81,7 @@
       connectionState.set("disconnected");
       if (isUserCancelled(e)) return;
       if (automatic) throw e;
+      else if (isNative) failure = connectionFeedback(e);
       else Toasts.error(e);
     }
   };
@@ -183,6 +190,22 @@
   });
 </script>
 
+{#if isNative && failure}
+  <div class="studio-connection-failure" role="alert" data-testid="connection-failure">
+    <strong>Could not connect to the printer</strong>
+    <p>{failure.detail}</p>
+    <p>{failure.tip}</p>
+    <div>
+      <button
+        class="btn btn-sm btn-secondary"
+        onclick={onManageDevices}
+        disabled={$connectionState === "connecting" || $printJobActive}>Open Devices / retry</button>
+      <button class="btn btn-sm btn-link" aria-label="Dismiss connection error" onclick={() => (failure = undefined)}
+        >Dismiss</button>
+    </div>
+  </div>
+{/if}
+
 <div class="input-group w-auto input-group-sm flex-nowrap justify-content-end">
   {#if isNative}
     <button
@@ -192,151 +215,154 @@
       title="Select printer, pair Bluetooth, or manage reconnect"><MdIcon icon="settings_bluetooth" /> Devices</button>
   {/if}
   {#if $connectionState === "connected"}
-    <button class="btn btn-secondary" data-bs-toggle="dropdown" data-bs-auto-close="outside">
-      <MdIcon icon="settings" />
-    </button>
+    {#if !isNative}
+      <button class="btn btn-secondary" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+        <MdIcon icon="settings" />
+      </button>
 
-    <div class="dropdown-menu p-3">
-      {#if $printerInfo}
-        <div class="text-secondary">{$tr("connector.device_version")}</div>
+      <div class="dropdown-menu p-3">
+        {#if $printerInfo}
+          <div class="text-secondary">{$tr("connector.device_version")}</div>
 
-        <div class="d-flex border rounded">
-          <div class="px-1 bg-light-subtle border-end">HW</div>
-          <div class="px-1 flex-grow-1 border-end text-center">{$printerInfo.hardwareVersion}</div>
-          <div class="px-1 flex-grow-1 border-end text-center">{$printerInfo.softwareVersion}</div>
-          <div class="px-1 bg-body-secondary">FW</div>
-        </div>
-      {/if}
-
-      <div class="text-secondary mt-2">
-        {$tr("connector.rfid.paper")}
-        <button class="btn btn-sm p-0" onclick={() => $printerClient.fetchRfidInfo()}><MdIcon icon="loop" /></button>
-      </div>
-
-      {#if $rfidInfo.labelRfidInfo?.tagPresent}
-        <div class="d-flex border rounded mt-1">
-          <div class="px-1 bg-light-subtle border-end">{$tr("connector.rfid.usage")}</div>
-          <div class="px-1 flex-grow-1 d-flex align-items-center gap-1">
-            <div class="progress flex-grow-1" role="progressbar" style:height="0.6rem">
-              <div
-                class="progress-bar"
-                style:width={`${percentage($rfidInfo.labelRfidInfo.usedPaper, $rfidInfo.labelRfidInfo.allPaper)}%`}>
-              </div>
-            </div>
-            <div class="fs-08">
-              {$rfidInfo.labelRfidInfo?.usedPaper} / {$rfidInfo.labelRfidInfo?.allPaper}
-            </div>
-          </div>
-        </div>
-
-        <div class="d-flex border rounded mt-1">
-          <div class="px-1 bg-light-subtle border-end">{$tr("connector.rfid.type")}</div>
-          <div class="px-1 flex-grow-1 text-center">
-            {$tr(`preview.label_type.${LabelType[$rfidInfo.labelRfidInfo?.consumablesType]}` as TranslationKey)} ({$rfidInfo
-              .labelRfidInfo?.consumablesType})
-          </div>
-        </div>
-
-        {#if $rfidInfo.paperInfo?.paperWidth !== undefined && $rfidInfo.paperInfo?.paperHeight !== undefined}
-          <div class="d-flex border rounded mt-1">
-            <div class="px-1 bg-light-subtle border-end">{$tr("connector.rfid.dimensions")}</div>
-            <div class="px-1 flex-grow-1 text-center">
-              {$rfidInfo.paperInfo.paperWidth}x{$rfidInfo.paperInfo.paperHeight}mm
-            </div>
+          <div class="d-flex border rounded">
+            <div class="px-1 bg-light-subtle border-end">HW</div>
+            <div class="px-1 flex-grow-1 border-end text-center">{$printerInfo.hardwareVersion}</div>
+            <div class="px-1 flex-grow-1 border-end text-center">{$printerInfo.softwareVersion}</div>
+            <div class="px-1 bg-body-secondary">FW</div>
           </div>
         {/if}
-      {:else}
-        {$tr("connector.rfid.no_tag")}
-      {/if}
 
-      {#if $rfidInfo.ribbonRfidInfo?.tagPresent}
         <div class="text-secondary mt-2">
-          {$tr("connector.rfid.ribbon")}
+          {$tr("connector.rfid.paper")}
           <button class="btn btn-sm p-0" onclick={() => $printerClient.fetchRfidInfo()}><MdIcon icon="loop" /></button>
         </div>
 
-        <div class="d-flex border rounded mt-1">
-          <div class="px-1 bg-light-subtle border-end">{$tr("connector.rfid.usage")}</div>
-          <div class="px-1 flex-grow-1 d-flex align-items-center gap-1">
-            <div class="progress flex-grow-1" role="progressbar" style:height="0.6rem">
-              <div
-                class="progress-bar"
-                style:width={`${percentage($rfidInfo.ribbonRfidInfo.usedPaper, $rfidInfo.ribbonRfidInfo.allPaper)}%`}>
+        {#if $rfidInfo.labelRfidInfo?.tagPresent}
+          <div class="d-flex border rounded mt-1">
+            <div class="px-1 bg-light-subtle border-end">{$tr("connector.rfid.usage")}</div>
+            <div class="px-1 flex-grow-1 d-flex align-items-center gap-1">
+              <div class="progress flex-grow-1" role="progressbar" style:height="0.6rem">
+                <div
+                  class="progress-bar"
+                  style:width={`${percentage($rfidInfo.labelRfidInfo.usedPaper, $rfidInfo.labelRfidInfo.allPaper)}%`}>
+                </div>
+              </div>
+              <div class="fs-08">
+                {$rfidInfo.labelRfidInfo?.usedPaper} / {$rfidInfo.labelRfidInfo?.allPaper}
               </div>
             </div>
-            <div class="fs-08">
-              {$rfidInfo.ribbonRfidInfo?.usedPaper} / {$rfidInfo.ribbonRfidInfo?.allPaper}
+          </div>
+
+          <div class="d-flex border rounded mt-1">
+            <div class="px-1 bg-light-subtle border-end">{$tr("connector.rfid.type")}</div>
+            <div class="px-1 flex-grow-1 text-center">
+              {$tr(`preview.label_type.${LabelType[$rfidInfo.labelRfidInfo?.consumablesType]}` as TranslationKey)} ({$rfidInfo
+                .labelRfidInfo?.consumablesType})
             </div>
           </div>
+
+          {#if $rfidInfo.paperInfo?.paperWidth !== undefined && $rfidInfo.paperInfo?.paperHeight !== undefined}
+            <div class="d-flex border rounded mt-1">
+              <div class="px-1 bg-light-subtle border-end">{$tr("connector.rfid.dimensions")}</div>
+              <div class="px-1 flex-grow-1 text-center">
+                {$rfidInfo.paperInfo.paperWidth}x{$rfidInfo.paperInfo.paperHeight}mm
+              </div>
+            </div>
+          {/if}
+        {:else}
+          {$tr("connector.rfid.no_tag")}
+        {/if}
+
+        {#if $rfidInfo.ribbonRfidInfo?.tagPresent}
+          <div class="text-secondary mt-2">
+            {$tr("connector.rfid.ribbon")}
+            <button class="btn btn-sm p-0" onclick={() => $printerClient.fetchRfidInfo()}
+              ><MdIcon icon="loop" /></button>
+          </div>
+
+          <div class="d-flex border rounded mt-1">
+            <div class="px-1 bg-light-subtle border-end">{$tr("connector.rfid.usage")}</div>
+            <div class="px-1 flex-grow-1 d-flex align-items-center gap-1">
+              <div class="progress flex-grow-1" role="progressbar" style:height="0.6rem">
+                <div
+                  class="progress-bar"
+                  style:width={`${percentage($rfidInfo.ribbonRfidInfo.usedPaper, $rfidInfo.ribbonRfidInfo.allPaper)}%`}>
+                </div>
+              </div>
+              <div class="fs-08">
+                {$rfidInfo.ribbonRfidInfo?.usedPaper} / {$rfidInfo.ribbonRfidInfo?.allPaper}
+              </div>
+            </div>
+          </div>
+        {/if}
+
+        <div class="text-secondary mt-2">{$tr("connector.settings")}</div>
+
+        <div class="form-check form-switch">
+          <input
+            class="form-check-input"
+            type="checkbox"
+            role="switch"
+            id="power-sound-switch"
+            checked={$printerInfo.settings.powerSound}
+            onchange={() =>
+              $printerClient.setSoundEnabled(SoundSettingsItemType.PowerSound, !$printerInfo.settings.powerSound)} />
+          <label class="form-check-label" for="power-sound-switch">{$tr("connector.settings.power_sound")}</label>
         </div>
-      {/if}
 
-      <div class="text-secondary mt-2">{$tr("connector.settings")}</div>
+        <div class="form-check form-switch">
+          <input
+            class="form-check-input"
+            type="checkbox"
+            role="switch"
+            id="connection-sound-switch"
+            checked={$printerInfo.settings.connectionSound}
+            onchange={() =>
+              $printerClient.setSoundEnabled(
+                SoundSettingsItemType.BluetoothConnectionSound,
+                !$printerInfo.settings.connectionSound,
+              )} />
+          <label class="form-check-label" for="connection-sound-switch"
+            >{$tr("connector.settings.connection_sound")}</label>
+        </div>
 
-      <div class="form-check form-switch">
-        <input
-          class="form-check-input"
-          type="checkbox"
-          role="switch"
-          id="power-sound-switch"
-          checked={$printerInfo.settings.powerSound}
-          onchange={() =>
-            $printerClient.setSoundEnabled(SoundSettingsItemType.PowerSound, !$printerInfo.settings.powerSound)} />
-        <label class="form-check-label" for="power-sound-switch">{$tr("connector.settings.power_sound")}</label>
-      </div>
+        <button class="btn btn-sm btn-outline-secondary w-100 mt-3" onclick={() => (verboseInfoShow = true)}
+          >{$tr("connector.open_verbose")}</button>
 
-      <div class="form-check form-switch">
-        <input
-          class="form-check-input"
-          type="checkbox"
-          role="switch"
-          id="connection-sound-switch"
-          checked={$printerInfo.settings.connectionSound}
-          onchange={() =>
-            $printerClient.setSoundEnabled(
-              SoundSettingsItemType.BluetoothConnectionSound,
-              !$printerInfo.settings.connectionSound,
-            )} />
-        <label class="form-check-label" for="connection-sound-switch"
-          >{$tr("connector.settings.connection_sound")}</label>
-      </div>
+        <button
+          class="btn btn-sm btn-outline-secondary d-block w-100 mt-1"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#firmware_flashing">
+          {$tr("connector.firmware_flashing")}
+          <MdIcon icon="expand_more" />
+        </button>
 
-      <button class="btn btn-sm btn-outline-secondary w-100 mt-3" onclick={() => (verboseInfoShow = true)}
-        >{$tr("connector.open_verbose")}</button>
+        <div class="collapse" id="firmware_flashing">
+          <FirmwareUpdater />
+        </div>
 
-      <button
-        class="btn btn-sm btn-outline-secondary d-block w-100 mt-1"
-        type="button"
-        data-bs-toggle="collapse"
-        data-bs-target="#firmware_flashing">
-        {$tr("connector.firmware_flashing")}
-        <MdIcon icon="expand_more" />
-      </button>
+        <button
+          class="btn btn-sm btn-outline-secondary d-block w-100 mt-1"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#tests">
+          {$tr("debug.title")}
+          <MdIcon icon="expand_more" />
+        </button>
 
-      <div class="collapse" id="firmware_flashing">
-        <FirmwareUpdater />
-      </div>
-
-      <button
-        class="btn btn-sm btn-outline-secondary d-block w-100 mt-1"
-        type="button"
-        data-bs-toggle="collapse"
-        data-bs-target="#tests">
-        {$tr("debug.title")}
-        <MdIcon icon="expand_more" />
-      </button>
-
-      <div class="collapse" id="tests">
-        <div class="d-flex flex-wrap gap-1 mt-1">
-          <button class="btn btn-sm btn-primary" onclick={startHeartbeat}>Heartbeat on</button>
-          <button class="btn btn-sm btn-primary" onclick={stopHeartbeat}>Heartbeat off</button>
-          <button class="btn btn-sm btn-primary" onclick={reset}>Reset</button>
+        <div class="collapse" id="tests">
+          <div class="d-flex flex-wrap gap-1 mt-1">
+            <button class="btn btn-sm btn-primary" onclick={startHeartbeat}>Heartbeat on</button>
+            <button class="btn btn-sm btn-primary" onclick={stopHeartbeat}>Heartbeat off</button>
+            <button class="btn btn-sm btn-primary" onclick={reset}>Reset</button>
+          </div>
         </div>
       </div>
-    </div>
+    {/if}
 
     <span class="input-group-text">
-      {#if connectionType === "serial"}
+      {#if connectionType === "serial" || ($printerClient instanceof NativeNiimbotClient && $printerClient.getTransportKind() === "serial")}
         <MdIcon icon="usb" />
       {:else}
         <MdIcon icon="bluetooth" />
@@ -404,6 +430,29 @@
 {#if isNative && reconnectStatus}<div class="studio-reconnect-status" role="status">{reconnectStatus}</div>{/if}
 
 <style>
+  .studio-connection-failure {
+    position: fixed;
+    right: 20px;
+    bottom: 24px;
+    z-index: 1080;
+    width: min(440px, calc(100vw - 40px));
+    padding: 16px;
+    border: 1px solid var(--studio-red);
+    border-radius: 12px;
+    background: var(--studio-background);
+    color: var(--studio-foreground);
+    box-shadow: 0 6px 24px #0003;
+    font-size: 12px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .studio-connection-failure p {
+    margin: 8px 0;
+  }
+  .studio-connection-failure > div {
+    display: flex;
+    gap: 8px;
+  }
   .dropdown-menu {
     width: 100vw;
     max-width: 300px;

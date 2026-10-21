@@ -13,6 +13,7 @@ import { connectionState } from "$/stores";
 import { runStockSmoke } from "$/desktop/smoke_stock";
 import { runOverlaySmoke } from "$/desktop/smoke_overlays";
 import { runLibraryCacheSmoke } from "$/desktop/smoke_library_cache";
+import { NativeNiimbotClient } from "$/desktop/client";
 
 export async function runEditorSmoke(context: {
   canvas: CustomCanvas;
@@ -155,6 +156,34 @@ export async function runEditorSmoke(context: {
   await new Promise((resolve) => setTimeout(resolve, 150));
   const deviceCancellationSilent =
     deviceChooserOpened && get(connectionState) === "disconnected" && !document.querySelector(".toast-danger");
+  const originalConnect = NativeNiimbotClient.prototype.connect;
+  let connectionFailureHelpful = false;
+  let connectionFailureDismisses = false;
+  try {
+    NativeNiimbotClient.prototype.connect = async () => {
+      throw new Error("org.bluez.Error.AuthenticationRejected");
+    };
+    deviceButton.click();
+    const deadline = Date.now() + 3000;
+    while (!document.querySelector('[data-testid="connection-failure"]') && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      await tick();
+    }
+    const failure = document.querySelector<HTMLElement>('[data-testid="connection-failure"]');
+    connectionFailureHelpful =
+      !!failure &&
+      failure.textContent!.includes("AuthenticationRejected") &&
+      failure.textContent!.includes("Pair") &&
+      failure.textContent!.includes("Bluetooth LE") &&
+      failure.getAttribute("role") === "alert" &&
+      get(connectionState) === "disconnected";
+    await nativeRequest("testSnapshot", { name: "connection-failure" });
+    failure?.querySelector<HTMLButtonElement>('[aria-label="Dismiss connection error"]')?.click();
+    await tick();
+    connectionFailureDismisses = !document.querySelector('[data-testid="connection-failure"]');
+  } finally {
+    NativeNiimbotClient.prototype.connect = originalConnect;
+  }
   canvas.renderAll();
   const encoded = ImageEncoder.encodeCanvas(canvas.getElement(), PageColorType.SingleColor, labelProps.printDirection);
   context.openPreview();
@@ -179,6 +208,8 @@ export async function runEditorSmoke(context: {
       formattingWorks &&
       codesWork &&
       deviceCancellationSilent &&
+      connectionFailureHelpful &&
+      connectionFailureDismisses &&
       stockShapesCorrect &&
       stockSetupWorks &&
       overlaysWork &&
@@ -201,6 +232,8 @@ export async function runEditorSmoke(context: {
     formattingWorks,
     ...codeResults,
     deviceCancellationSilent,
+    connectionFailureHelpful,
+    connectionFailureDismisses,
     stockShapesCorrect,
     ...stockResults,
     ...overlayResults,

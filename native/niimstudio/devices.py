@@ -7,6 +7,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk
 
 from .bluetooth import DEVICE
+from .connection_errors import connection_tip
 from .pairing import PairingAgent
 from .serial_transport import discover_serial
 
@@ -31,6 +32,8 @@ class DeviceChooser(Adw.Window):
         self.agent = None
         self.rows = []
         self.signature = None
+        self.failure = ""
+        self.pair_cancel_requested = False
         self.connect("close-request", self._closed)
 
         layout = Adw.ToolbarView()
@@ -71,11 +74,14 @@ class DeviceChooser(Adw.Window):
         page.add(self.message)
         self.usb = Adw.PreferencesGroup(title="USB", description="USB serial devices detected on this computer")
         self.ble = Adw.PreferencesGroup(
-            title="Bluetooth LE", description="Pairing is optional for many NIIMBOT printers."
+            title="Bluetooth LE", description="Use Connect first. Pair only if Bluetooth authentication is required."
         )
         page.add(self.usb)
         page.add(self.ble)
         self.status = Adw.PreferencesGroup(description="Checking connected devices…")
+        self.cancel_pair_button = Gtk.Button(label="Cancel pairing", valign=Gtk.Align.CENTER, visible=False)
+        self.cancel_pair_button.connect("clicked", lambda _button: self.cancel_pairing())
+        header.pack_start(self.cancel_pair_button)
         page.add(self.status)
         layout.set_content(page)
         self.set_content(layout)
@@ -86,6 +92,23 @@ class DeviceChooser(Adw.Window):
         if not self.closed:
             self.status.set_description(text)
 
+    def show_failure(self, action, error, kind="bluetooth"):
+        self.failure = f"{action} failed: {error}\n{connection_tip(error, kind)}"
+        self.set_status(self.failure)
+
+    def connection_failed(self, error, kind="bluetooth"):
+        if self.closed:
+            return
+        self.busy = False
+        self.usb.set_sensitive(True)
+        self.ble.set_sensitive(True)
+        self.show_failure("Connection", error, kind)
+
+    def connection_succeeded(self):
+        self.on_cancel = None
+        self._cleanup()
+        self.close()
+
     def refresh(self):
         if self.closed:
             return GLib.SOURCE_REMOVE
@@ -93,6 +116,12 @@ class DeviceChooser(Adw.Window):
             return GLib.SOURCE_CONTINUE
         self.refreshing = True
         show_all = self.show_all.get_active()
+        self.ble.set_title("Bluetooth (all devices)" if show_all else "Bluetooth LE")
+        self.ble.set_description(
+            "Classic serial is Bluetooth, not USB. This app connects through compatible BLE services."
+            if show_all
+            else "Use Connect first. Pair only if Bluetooth authentication is required."
+        )
 
         def discover():
             usb = discover_serial()
@@ -103,7 +132,7 @@ class DeviceChooser(Adw.Window):
 
         def ready(result):
             self.refreshing = False
-            if self.closed:
+            if self.closed or self.busy:
                 return
             usb, ble, error = result
             signature = repr((usb, ble))
@@ -114,25 +143,42 @@ class DeviceChooser(Adw.Window):
                 self.rows = []
                 for device in [*usb, *ble]:
                     group = self.usb if device["kind"] == "serial" else self.ble
-                    subtitle = (
-                        device["id"]
-                        if device["kind"] == "serial"
-                        else (f"{device['address']} · {'Paired' if device['paired'] else 'Not paired'}")
-                    )
+                    if device["kind"] == "serial":
+                        subtitle = device["id"]
+                    else:
+                        mode = (
+                            "Classic / serial · not supported"
+                            if device.get("classic_only")
+                            else (
+                                "Bluetooth LE"
+                                if device.get("ble_confirmed")
+                                else "BLE candidate · services not yet checked"
+                            )
+                        )
+                        subtitle = f"{device['address']} · {mode} · {'Paired' if device['paired'] else 'Not paired'}"
                     row = Adw.ActionRow(title=device["name"], subtitle=subtitle, use_markup=False)
-                    if device["kind"] == "bluetooth" and not device["paired"]:
+                    if device["kind"] == "bluetooth" and not device["paired"] and not device.get("classic_only"):
                         pair = Gtk.Button(label="Pair", valign=Gtk.Align.CENTER)
+                        pair.set_tooltip_text(
+                            "Optional: most BLE printers use Connect without pairing. No PIN is guessed."
+                        )
                         pair.set_sensitive(self.hardware_enabled)
                         pair.connect("clicked", lambda _button, d=device: self.pair(d))
                         row.add_suffix(pair)
                     connect = Gtk.Button(label="Connect", valign=Gtk.Align.CENTER)
-                    connect.set_sensitive(self.hardware_enabled)
+                    connect.set_sensitive(self.hardware_enabled and not device.get("classic_only"))
+                    if device.get("classic_only"):
+                        connect.set_tooltip_text(
+                            "Choose the Bluetooth LE entry with the same printer name, or use USB."
+                        )
                     connect.add_css_class("suggested-action")
                     connect.connect("clicked", lambda _button, d=device: self.select(d))
                     row.add_suffix(connect)
                     group.add(row)
                     self.rows.append((group, row))
-            if error:
+            if self.failure:
+                self.set_status(self.failure)
+            elif error:
                 self.set_status(f"Bluetooth unavailable: {error}. USB is still usable.")
             elif not usb and not ble:
                 self.set_status(
@@ -153,6 +199,7 @@ class DeviceChooser(Adw.Window):
             self.set_status("Bluetooth is unavailable. Check that the BlueZ service is running.")
             return
         self.scan_pending = True
+        self.failure = ""
         self.set_status("Scanning for 25 seconds… Turn your printer on and keep it nearby.")
 
         def started(owned):
@@ -166,7 +213,7 @@ class DeviceChooser(Adw.Window):
 
         def failed(error):
             self.scan_pending = False
-            self.set_status(str(error))
+            self.show_failure("Scan", error)
 
         self.run_task(self.bluez.start_scan, started, failed)
 
@@ -174,7 +221,8 @@ class DeviceChooser(Adw.Window):
         owned, self.scan_owned = self.scan_owned, []
         if owned:
             self.run_task(lambda: self.bluez.stop_scan(owned))
-            self.set_status("Scan complete. Select a printer or scan again.")
+            if not self.failure and not self.busy:
+                self.set_status("Scan complete. Select a printer or scan again.")
         return GLib.SOURCE_REMOVE
 
     def pair(self, device):
@@ -182,39 +230,89 @@ class DeviceChooser(Adw.Window):
             return
         if self.busy:
             return
+        self.failure = ""
+        self.pair_cancel_requested = False
         try:
             if self.agent is None:
                 self.agent = PairingAgent(self.bluez, self)
             self.agent.device = device["id"]
         except Exception as error:
-            self.set_status(f"Could not start pairing: {error}")
+            self.show_failure("Pairing", error)
             return
         self.busy = True
-        self.set_status(f"Pairing with {device['name']}… Respond to any pairing-code prompt.")
+        self.usb.set_sensitive(False)
+        self.ble.set_sensitive(False)
+        self.cancel_pair_button.set_visible(True)
+        self.cancel_pair_button.set_sensitive(True)
+        self.set_status(
+            f"Pairing with {device['name']}… This is optional for many BLE printers. "
+            "If no code prompt appears, cancel pairing and try Connect without pairing."
+        )
 
         def finished(_result):
-            self.busy = False
-            self.agent.cancel()
-            self.agent.device = None
-            self.set_status("Paired. You can now connect to the printer.")
-            self.refresh()
+            self.finish_pairing()
 
         def failed(error):
-            self.busy = False
-            self.agent.cancel()
-            self.agent.device = None
-            self.set_status(f"Pairing failed: {error}. Some BLE printers work with Connect without pairing.")
+            self.finish_pairing(error)
 
-        self.run_task(lambda: self.bluez.call(device["id"], DEVICE, "Pair", timeout=60000), finished, failed)
+        def work():
+            if not self.pair_cancel_requested:
+                return self.bluez.call(device["id"], DEVICE, "Pair", timeout=60000)
+
+        self.run_task(work, finished, failed)
+
+    def cancel_pairing(self):
+        if self.closed or not self.busy or not self.agent or not self.agent.device or self.pair_cancel_requested:
+            return
+        self.pair_cancel_requested = True
+        self.agent.cancel()
+        self.cancel_pair_button.set_sensitive(False)
+        self.set_status("Canceling pairing… You can try Connect without pairing once this finishes.")
+
+        def canceled(bus, result):
+            try:
+                bus.call_finish(result)
+            except GLib.Error:
+                # Pair's own bounded call still completes and restores the UI;
+                # don't clear busy early while a queued Pair could still start.
+                pass
+
+        # Must bypass the worker occupied by the synchronous Pair call.
+        self.bluez.bus.call(
+            "org.bluez", self.agent.device, DEVICE, "CancelPairing", None, None, 0, 5000, None, canceled
+        )
+
+    def finish_pairing(self, error=None):
+        if self.closed:
+            return
+        self.busy = False
+        self.usb.set_sensitive(True)
+        self.ble.set_sensitive(True)
+        self.cancel_pair_button.set_visible(False)
+        self.agent.cancel()
+        self.agent.device = None
+        if self.pair_cancel_requested:
+            self.failure = "Pairing canceled. Try Connect on the Bluetooth LE entry without pairing."
+            self.set_status(self.failure)
+        elif error:
+            self.show_failure("Pairing", error)
+        else:
+            self.set_status("Paired. You can now connect to the printer.")
+            self.refresh()
 
     def select(self, device):
         if not self.hardware_enabled:
             return
         if self.busy:
             return
-        self.on_cancel = None
-        self._cleanup()
-        self.close()
+        if device.get("classic_only"):
+            self.show_failure("Connection", "This is the classic Bluetooth Serial Port entry, not Bluetooth LE.")
+            return
+        self.failure = ""
+        self.busy = True
+        self.usb.set_sensitive(False)
+        self.ble.set_sensitive(False)
+        self.set_status(f"Connecting to {device['name']}… Bluetooth service discovery can take up to a minute.")
         self.on_selected(device)
 
     def _cleanup(self):

@@ -2,7 +2,16 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from gi.repository import GLib
-from niimstudio.bluetooth import CHARACTERISTIC, DEVICE, SERVICE_UUID, BluetoothTransport, is_printer, unpack
+from niimstudio.bluetooth import (
+    CHARACTERISTIC,
+    DEVICE,
+    SERIAL_PORT_UUID,
+    SERVICE_UUID,
+    BluetoothTransport,
+    classic_only,
+    is_printer,
+    unpack,
+)
 
 
 class BluetoothTests(unittest.TestCase):
@@ -76,3 +85,33 @@ class BluetoothTests(unittest.TestCase):
         self.assertTrue(is_printer({"Name": "B1_PRO-123"}))
         self.assertTrue(is_printer({"Name": "Unusual printer", "UUIDs": [SERVICE_UUID]}))
         self.assertFalse(is_printer({"Name": "Keyboard"}))
+
+    def test_classic_entry_is_rejected_without_connecting_or_disconnecting(self):
+        bluez, device, _tx, _rx = self.setup_bluez()
+        bluez.objects.return_value = {device: {DEVICE: {"UUIDs": [SERIAL_PORT_UUID]}}}
+        transport = BluetoothTransport(bluez, lambda _data: None, lambda _reason: None)
+        with self.assertRaisesRegex(RuntimeError, "classic Bluetooth"):
+            transport.open(device)
+        bluez.call.assert_not_called()
+
+    def test_unknown_and_dual_mode_entries_are_not_assumed_classic_only(self):
+        self.assertFalse(classic_only({}))
+        self.assertFalse(classic_only({"UUIDs": [SERIAL_PORT_UUID, SERVICE_UUID]}))
+        self.assertTrue(classic_only({"UUIDs": [SERIAL_PORT_UUID]}))
+
+    def test_discovery_hides_classic_unless_show_all_but_keeps_unknown_ble(self):
+        from types import SimpleNamespace
+
+        from niimstudio.bluetooth import BlueZ
+
+        bluez = SimpleNamespace(
+            objects=lambda: {
+                "/classic": {DEVICE: {"Name": "B1 Pro", "UUIDs": [SERIAL_PORT_UUID]}},
+                "/ble": {DEVICE: {"Name": "B1 Pro"}},
+            }
+        )
+        devices = {item["id"]: item for item in BlueZ.discover(bluez)}
+        self.assertNotIn("/classic", devices)
+        self.assertFalse(devices["/ble"]["classic_only"])
+        all_devices = {item["id"]: item for item in BlueZ.discover(bluez, show_all=True)}
+        self.assertTrue(all_devices["/classic"]["classic_only"])

@@ -1,3 +1,4 @@
+import json
 import unittest
 from types import MethodType, SimpleNamespace
 from unittest.mock import Mock, patch
@@ -82,3 +83,32 @@ class LifecycleTests(unittest.TestCase):
         self.app.prepare_close()
         self.app.window.destroy.assert_called_once()
         self.app.webview.call_async_javascript_function.assert_not_called()
+
+
+class ReconnectPreferenceTests(unittest.TestCase):
+    def request(self, enabled, save_error=None):
+        app = SimpleNamespace(smoke=False, history=Mock(auto_reconnect=True), reply=Mock(), send=Mock())
+        app.history.save.side_effect = save_error
+        value = Mock()
+        value.to_json.return_value = json.dumps({"id": 7, "op": "setReconnectPolicy", "enabled": enabled})
+        StudioApplication.on_message(app, None, value)
+        return app
+
+    def test_settings_save_reconnect_preference_without_touching_the_printer(self):
+        app = self.request(False)
+        self.assertFalse(app.history.auto_reconnect)
+        app.history.save.assert_called_once()
+        app.reply.assert_called_once_with(7, {"enabled": False})
+        app.send.assert_called_once_with({"event": "reconnect-policy", "enabled": False})
+
+    def test_failed_preference_save_restores_previous_value(self):
+        app = self.request(False, OSError("full disk"))
+        self.assertTrue(app.history.auto_reconnect)
+        app.send.assert_not_called()
+        self.assertIsInstance(app.reply.call_args.kwargs["error"], OSError)
+
+    def test_preference_requires_a_boolean(self):
+        app = self.request("false")
+        app.history.save.assert_not_called()
+        app.send.assert_not_called()
+        self.assertIsInstance(app.reply.call_args.kwargs["error"], ValueError)

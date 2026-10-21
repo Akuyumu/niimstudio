@@ -1,4 +1,52 @@
-# Status — 2026-10-20
+# Status — 2026-10-21
+
+## Stable/development separation
+
+- `main` remains at the published v0.1.3 baseline while current Bluetooth work is
+  on `dev`. User launchers are unchanged; this tester explicitly uses the checkout.
+- Both branches run checks. A release-policy gate requires a stable numeric tag,
+  matching web/native versions and a commit already on `main` before packaging.
+  The updater explicitly rejects drafts/prereleases as well as non-stable tags.
+- Managed installs and immutable published assets are independent of development
+  builds; install validation failures preserve the previous baseline. Source users
+  can pin a release tag in a separate checkout. No new release was made here.
+
+## Development settings and roll-read work (not released)
+
+- Top-right Settings replaces the native printer dropdown's everyday controls.
+  Sound and idle timeout use existing NiimBlueLib commands with read-back
+  verification. Opening settings changes no printer values; controls lock during
+  printing and unknown settings stay unavailable.
+- Sleep mode 4 means never **or** 60 minutes depending on firmware. This is explicit
+  in the UI, not claimed as a verified B1 Pro disable-sleep setting. Sound/sleep
+  writes have synthetic verification only.
+- Reconnect preference and read-only printer/roll details are available there.
+  Details omit serial numbers, UUIDs and artwork. USB links show a USB icon.
+- Media-query errors are preserved. RFID identity is distinguished from a size
+  report. Optional, user-confirmed size presets are remembered by model/product
+  code, labelled Saved roll rather than Auto, and can be changed. A conflicting
+  parsed report cannot be bypassed by a saved preset.
+- Vite's development dependency is updated to 7.3.7 for current advisories.
+
+## Local Bluetooth feedback patch (not released)
+
+- Known classic-only entries are hidden by default. Show all Bluetooth devices
+  reveals them, disabled and explained under Bluetooth, never USB. Unknown BLE
+  services remain eligible rather than being assumed unsupported.
+- Keeps the chooser open during a transport attempt, with progress and persistent
+  error/tip/retry on failure. Pairing failures survive the two-second refresh.
+  Negotiation failures in the editor have a persistent, dismissible error and
+  an Open Devices / retry action. Cancellation remains quiet.
+- Pairing has a visible Cancel pairing button that bypasses the occupied worker;
+  cancel-before-start cannot accidentally send a queued Pair request. Instructions
+  recommend Connect first rather than implying a PIN is always needed.
+- Rejects unsuccessful protocol handshakes instead of displaying a false success;
+  ignores callbacks from a canceled attempt. No PIN is guessed or pairing forced.
+- Tests cover classic filtering, preserved failure messages, retry/cancel races,
+  targeted tips, and the visible editor error/dismissal. Two authorized BLE-only
+  diagnostics timed out before GATT discovery, with no pairing/print commands.
+  The user confirms USB connection works; Bluetooth and printing remain unverified.
+  The working USB session was not interrupted for more diagnostics.
 
 ## v0.1.3 patch
 
@@ -71,7 +119,7 @@
 
 ## Automated verification
 
-- 69 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
+- 90 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
   fragmentation, service discovery, notifications, and cleanup; mocked pairing
   agents/prompts; palette safety/GTK compositing, bridge validation, and device history.
 - Installer tests cover checksum failure, traversal/links, update rollback,
@@ -81,7 +129,8 @@
 - Ubuntu CI exercises the actual installed native app and real Flatpak GUI on
   x86-64 and ARM64. Exported Flatpak bundles are installed/reinstalled with a
   retained-data fixture before publishing, not merely built as manifests.
-- 21 Node tests: CSV safety, print validation, undo, reconnect, every printable
+- 34 Node tests: settings/read-back, media reads, saved-roll identity, connection
+  troubleshooting tips, CSV safety, print validation, undo, reconnect, every printable
   Code 128 character, EAN-13, cancellation, media validation, head-width/rotation
   mapping, resolution priority, and safe preset conversion.
 - Actual GTK/WebKit smoke profile: editor objects, image import, serialization,
@@ -110,7 +159,8 @@
 
 ## Still needs real hardware / user acceptance
 
-No USB printer or matching known BLE printer was present during development.
+A B1 Pro's classic/BLE advertisements have been observed and the user confirms
+USB connection works. Bluetooth connection and physical printing are not confirmed.
 USB/BLE printing, BlueZ pairing prompts with real hardware, battery/RFID accuracy
 and automatic sizing from real media reports,
 reconnect behavior under printer faults, and representative real-media results

@@ -9,7 +9,7 @@
    For Bluetooth, turn Bluetooth on in your desktop settings first, then **Scan for printers**.
 4. Select the printer. BLE often works with **Connect** without pairing. Use
    **Pair** if a bond is required; answer the native PIN/passkey prompt using
-   the printer's documented code. No default PIN is assumed.
+    the printer's documented code. No default PIN is assumed.
 5. The app reads the printer's model/capabilities and paper information. For a
    recognized B1 Pro it selects 300 DPI and top feed. Valid reported dimensions
    automatically size an empty/new canvas; existing artwork gets a confirmation
@@ -72,6 +72,27 @@ be registered with CUPS to use this app.
 
 ## Bluetooth limitations
 
+The B1 Pro can appear twice with the same name and different addresses: one
+classic Bluetooth Serial Port entry and one BLE entry. Choose **Connect** on
+the BLE entry first. Known classic-only services are hidden unless **Show all
+Bluetooth devices** is enabled; then they are labelled unsupported and cannot
+be selected. Pairing that entry does not enable the BLE transport. An entry
+whose BLE services have not been discovered yet is labelled a candidate, not
+promised as supported.
+
+A generic PIN/passkey failure in the desktop Bluetooth panel is not evidence
+that the printer needs a code. Cancel it and try the BLE entry without pairing,
+with the phone's NIIMBOT app closed. Only enter a PIN if the device's own
+documentation calls for one; do not guess codes or remove existing bonds.
+Connection/pairing failures stay visible in Devices with the original error
+and a short next-step tip. Connection negotiation failures after the picker
+closes appear as a dismissible error with **Open Devices / retry** in the editor.
+Use **Cancel pairing** if pairing stalls without a prompt; it does not remove a
+bond or reset Bluetooth. Classic serial is a Bluetooth radio protocol, not a USB
+port. If BLE connection times out before service discovery, temporarily disable
+the phone's Bluetooth and retry with the printer awake. Do not disconnect a working
+USB session just to run another diagnostic without saving your work first.
+
 This implementation targets the NIIMBOT BLE service
 `e7810a71-73ae-499d-8c15-faa9aef0c3f2`, with combined or separate write/notify
 characteristics. Classic Bluetooth RFCOMM/SPP is not implemented. Use USB for
@@ -83,6 +104,29 @@ Scanning lasts 25 seconds and releases only this app's discovery sessions. The
 app never turns adapters on/off, trusts arbitrary devices, removes existing
 bonds, or replaces the desktop pairing agent. If a device is busy, close the
 phone app before retrying rather than resetting its settings automatically.
+
+## Printer settings (development checkout)
+
+Open **Settings** at the top right for power/connection sounds, sleep/auto-off and
+the app's reconnect preference. Printer changes are sent only on a user action
+and are read back before success is shown. Unsupported reads leave controls
+unavailable; settings lock while printing. No reset, calibration, paper feed or
+firmware operation is included.
+
+The protocol exposes sleep mode codes: 1/2 are usually 15/30 minutes, 3 is 45/60
+minutes, and 4 is 60 minutes or never depending on model/firmware. The UI labels
+that ambiguity rather than inventing an unverified disable code. Reading back
+mode 4 confirms the code was saved, **not** that a particular B1 Pro firmware will
+never sleep. See [NiimBlueLib's documented modes](https://libdocs.niim.blue/enums/API.AutoShutdownTime.html).
+
+**Printer and roll details** shows read-only model/firmware, RFID presence/product
+code and the paper-info result, including read failures. It omits printer/roll
+serials, tag UUIDs and label artwork. An RFID product code is not a size: some
+firmware returns an identity but no extended dimensions. Do not infer dimensions
+from the printer model or a vaguely matching SKU. The stock picker can remember
+a size you explicitly choose for that product on that model; subsequent use is
+labelled **Saved roll**, not measured/Auto, and **Change saved roll size** clears
+the association. Untagged rolls still need manual selection.
 
 ## Hardware acceptance checklist
 

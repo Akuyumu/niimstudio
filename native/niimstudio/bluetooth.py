@@ -8,6 +8,13 @@ SERVICE_UUID = "e7810a71-73ae-499d-8c15-faa9aef0c3f2"
 DEVICE = "org.bluez.Device1"
 ADAPTER = "org.bluez.Adapter1"
 CHARACTERISTIC = "org.bluez.GattCharacteristic1"
+SERIAL_PORT_UUID = "00001101-0000-1000-8000-00805f9b34fb"
+
+
+def classic_only(properties):
+    uuids = {str(value).lower() for value in properties.get("UUIDs", [])}
+    # No UUIDs yet is normal for an undiscovered BLE device; don't exclude it.
+    return SERIAL_PORT_UUID in uuids and SERVICE_UUID not in uuids
 
 
 def unpack(value):
@@ -53,7 +60,7 @@ class BlueZ:
         devices = []
         for path, interfaces in objects.items():
             props = interfaces.get(DEVICE)
-            if props and (show_all or is_printer(props)):
+            if props and (show_all or (is_printer(props) and not classic_only(props))):
                 devices.append(
                     {
                         "id": path,
@@ -61,6 +68,8 @@ class BlueZ:
                         "name": props.get("Alias", props.get("Name", props.get("Address", "Bluetooth device"))),
                         "address": props.get("Address", ""),
                         "paired": props.get("Paired", False),
+                        "classic_only": classic_only(props),
+                        "ble_confirmed": SERVICE_UUID in props.get("UUIDs", []),
                         "rssi": props.get("RSSI", -999),
                     }
                 )
@@ -106,6 +115,9 @@ class BluetoothTransport:
         self.write_type = "command"
 
     def open(self, device):
+        properties = self.bluez.objects().get(device, {}).get(DEVICE, {})
+        if classic_only(properties):
+            raise RuntimeError("This is the classic Bluetooth Serial Port entry, not the NIIMBOT Bluetooth LE entry.")
         self.device = device
         try:
             self.bluez.call(device, DEVICE, "Connect", timeout=25000)
