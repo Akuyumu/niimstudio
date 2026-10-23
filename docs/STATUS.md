@@ -2,18 +2,18 @@
 
 ## Stable/development separation
 
-- `main` is the accepted stable source line. v0.3.0 incorporates the validated
-  reconnect, device-switching and canvas-navigation work from `dev`; the previous
-  stable v0.2.0 remains available as an immutable release.
+- `main` is the accepted stable source line. v0.3.1 is the current stable patch
+  release, adding the all-model physical media-width audit; the previous stable
+  v0.3.0 remains available as an immutable release.
 - Both branches run checks. A release-policy gate requires a stable numeric tag,
   matching web/native versions and a commit already on `main` before packaging.
   The updater explicitly rejects drafts/prereleases as well as non-stable tags.
 - Managed installs and immutable published assets are independent of development
   builds; install validation failures preserve the previous baseline. Source users
-  can pin a release tag in a separate checkout. v0.2.0-rc.1 and v0.3.0 were validated
-  through the same package gates before stable publication.
+  can pin a release tag in a separate checkout. v0.2.0-rc.1, v0.3.0 and v0.3.1 were
+  validated through the same package gates before stable publication.
 
-## After v0.3.0 (unreleased)
+## v0.3.1
 
 - B21S uses a 384-pixel/203-DPI printable head but documents 20–50 mm label widths.
   The media picker had treated printable width as physical width, hiding 50×30 mm
@@ -25,9 +25,9 @@
   on K2, and the larger presets on 3-/4-inch printers; the printable raster remains
   capped at the reported head width with an edge-margin notice.
 - Unknown future models fall back to the nearest documented head class rather than
-  losing the physical-media allowance. B21S and the other newly covered models still
-  need user confirmation that auto-detection succeeds with their actual printer
-  replies; no physical print was performed for this audit.
+  losing the physical-media allowance. The B21S 50×30 mm detection fix is
+  user-confirmed. Other newly covered models still need hardware confirmation with
+  their actual printer replies; no physical print was performed for this audit.
 
 ## v0.3.0
 

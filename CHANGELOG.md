@@ -1,4 +1,7 @@
-# Unreleased
+# NiimStudio 0.3.1
+
+Stable patch release. Includes the full model media-width audit and the B21S fix
+confirmed after v0.3.0.
 
 - Treat physical media width separately from printable head width for every model
   in the pinned NIIMBOT library. The documented head classes expose their real

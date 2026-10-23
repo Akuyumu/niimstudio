@@ -29,7 +29,7 @@ desktop, not Omarchy's shell or window manager.
 
 ## Quick start
 
-Install **v0.3.0** with one command on a Linux desktop:
+Install **v0.3.1** with one command on a Linux desktop:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Akuyumu/niimstudio/main/install.sh | bash

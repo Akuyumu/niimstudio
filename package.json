@@ -2,8 +2,10 @@
 	"name": "niimstudio",
 	"private": true,
 	"type": "module",
-	"version": "0.3.0",
-	"engines": { "node": ">=22.18.0" },
+	"version": "0.3.1",
+	"engines": {
+		"node": ">=22.18.0"
+	},
 	"scripts": {
 		"test": "bash scripts/test",
 		"test:smoke": "bash scripts/niimstudio --smoke-test",
