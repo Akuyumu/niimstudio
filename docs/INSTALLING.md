@@ -1,4 +1,4 @@
-# Installing NiimStudio v0.2.0
+# Installing NiimStudio v0.3.0
 
 ## One command
 
@@ -57,9 +57,9 @@ sandboxed app.
 This executes project code you choose to trust. For an inspect-before-running flow:
 
 ```bash
-curl -fsSLo niimstudio-install.sh https://raw.githubusercontent.com/Akuyumu/niimstudio/v0.2.0/install.sh
+curl -fsSLo niimstudio-install.sh https://raw.githubusercontent.com/Akuyumu/niimstudio/v0.3.0/install.sh
 less niimstudio-install.sh
-bash niimstudio-install.sh --version v0.2.0
+bash niimstudio-install.sh --version v0.3.0
 ```
 
 ```bash
@@ -127,9 +127,9 @@ Update notifications do not install anything until **Update now** is selected.
 You can keep using an older release; a failed download/validation leaves the
 current managed installation intact.
 
-Release candidates use explicit tags such as **v0.2.1-rc.1** and are marked
+Release candidates use explicit tags such as **v0.3.1-rc.1** and are marked
 prerelease, never latest stable. Opt in with the candidate's installer and
-`--version v0.2.1-rc.1`; Flatpak still additionally requires `--flatpak`. This does
+`--version v0.3.1-rc.1`; Flatpak still additionally requires `--flatpak`. This does
 not change ordinary stable users' updates. A managed candidate can be offered its
 final stable version later, but not older stable versions or subsequent candidates.
 Back up/export important labels before testing prerelease software. Keep candidate
@@ -139,7 +139,7 @@ For a stable **source checkout**, clone a release tag in a separate directory,
 then follow the source build steps in README:
 
 ```bash
-git clone --branch v0.2.0 --depth 1 https://github.com/Akuyumu/niimstudio.git niimstudio-stable
+git clone --branch v0.3.0 --depth 1 https://github.com/Akuyumu/niimstudio.git niimstudio-stable
 ```
 
 Do not switch or rebuild that directory while using it as your stable app. Keep
@@ -213,7 +213,7 @@ Both uninstall methods keep user data by default. Back up important labels first
 
 ## Packaging references
 
-v0.2.0 ships the native `tar.gz`, x86-64/ARM64 `.flatpak` bundles, `install.sh`,
+v0.3.0 ships the native `tar.gz`, x86-64/ARM64 `.flatpak` bundles, `install.sh`,
 and `SHA256SUMS`. Neither format includes private labels or proprietary NIIMBOT
 assets; source/dependency licenses are retained. This is not an AppImage, `.deb`,
 `.rpm`, or AUR release. The small installer + release download approach was

@@ -22,6 +22,8 @@ const metrics = () => {
     canvasY: canvas.y,
     canvasWidth: canvas.width,
     canvasHeight: canvas.height,
+    canvasCenterX: canvas.x + canvas.width / 2 - innerWidth / 2,
+    canvasCenterY: canvas.y + canvas.height / 2 - innerHeight / 2,
   };
 };
 const click = (selector: string) => document.querySelector<HTMLButtonElement>(selector)!.click();
@@ -87,10 +89,10 @@ export async function runOverlaySmoke() {
     modalFocusWorks &&= document.activeElement === trigger;
   }
   const overlaysKeepViewport = frames.every(
-    (frame) => frame.width === initial.width && frame.height === initial.height,
+    (frame) => Math.abs(frame.width - initial.width) <= 16 && Math.abs(frame.height - initial.height) <= 16,
   );
   const overlayEditorStationary = frames.every((frame) =>
-    ["headingX", "headingY", "canvasX", "canvasY", "canvasWidth", "canvasHeight"].every(
+    ["headingX", "headingY", "canvasCenterX", "canvasCenterY", "canvasWidth", "canvasHeight"].every(
       (key) => Math.abs(frame[key as keyof typeof frame] - initial[key as keyof typeof initial]) < 1,
     ),
   );

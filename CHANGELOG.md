@@ -1,18 +1,22 @@
-# Unreleased
+# NiimStudio 0.3.0
+
+Stable release. Includes the printer and stock work from v0.2.0, plus the reconnect,
+device-switching and canvas-navigation improvements below. v0.2.0 remains the
+previous stable release.
 
 - Startup auto-reconnect is capped at five attempts instead of looping indefinitely.
-- A visible `Auto-connecting… / Retrying in Ns` indicator now provides Cancel and
-  opens Devices, including a native generation-safe cancel operation.
+- A visible `Auto-connecting… / Retrying in Ns` indicator provides Cancel and opens
+  Devices, including a native generation-safe cancel operation.
 - Devices remains available during automatic connection attempts; only an active
-  print job disables it. Automatic retry exhaustion is reported with a clear action.
-- The editor starts at a computed fit zoom instead of a hardcoded 200%, so the whole
-  label and its true aspect ratio are visible. The zoom control now returns to Fit.
-- When zoomed in, a “Space+drag to see the full label” note distinguishes a cropped
-  view from an incorrectly sized label. The large bordered stage is the pan area;
-  Space+left-drag pans without using middle-click. Even a fully visible label can
-  move within the empty stage space; Fit recenters it.
+  print job disables it. Retry exhaustion is reported with a clear action.
 - Opening Devices while connected keeps the current link active. Closing the chooser
   changes nothing; selecting another device switches only after that explicit choice.
+- The editor starts at a computed fit zoom instead of a hardcoded 200%, so the whole
+  label and its true aspect ratio are visible. Fit tracks window size changes.
+- The large stage is the pan area. Space+left-drag moves the label, including when it
+  is already fully visible; Ctrl+scroll zooms. No middle-click gesture is used.
+- The redundant dotted viewport border was removed; a caption indicates when the
+  current zoom is showing only part of the label.
 
 # NiimStudio 0.2.0
 

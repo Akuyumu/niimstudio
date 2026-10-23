@@ -1,23 +1,22 @@
-# Status — 2026-10-21
+# Status — 2026-10-23
 
 ## Stable/development separation
 
-- `main` is the accepted stable source line. v0.2.0 incorporates the validated BLE,
-  Settings, stock and preview work from `dev`; the previous stable v0.1.3 remains
-  available as an immutable release.
+- `main` is the accepted stable source line. v0.3.0 incorporates the validated
+  reconnect, device-switching and canvas-navigation work from `dev`; the previous
+  stable v0.2.0 remains available as an immutable release.
 - Both branches run checks. A release-policy gate requires a stable numeric tag,
   matching web/native versions and a commit already on `main` before packaging.
   The updater explicitly rejects drafts/prereleases as well as non-stable tags.
 - Managed installs and immutable published assets are independent of development
   builds; install validation failures preserve the previous baseline. Source users
-  can pin a release tag in a separate checkout. v0.2.0-rc.1 was validated first;
-  the accepted source was then promoted to stable v0.2.0.
+  can pin a release tag in a separate checkout. v0.2.0-rc.1 and v0.3.0 were validated
+  through the same package gates before stable publication.
 
-## After v0.2.0 (unreleased)
+## v0.3.0
 
-- Automatic reconnect is now capped at five attempts with 2/5/10/30-second gaps
-  instead of retrying indefinitely. Recent system Bluetooth logs showed repeated
-  link attempts after launch while the Devices button was disabled.
+- Automatic reconnect is capped at five attempts with 2/5/10/30-second gaps
+  instead of retrying indefinitely.
 - The header now shows `Auto-connecting…` or `Retrying in Ns` with an explicit
   **Cancel** action during automatic reconnects. Either Cancel or Devices stops the
   pending attempt and opens the chooser, so another printer can be selected.
@@ -25,8 +24,7 @@
   job is active. The native `cancelConnect` operation invalidates queued callbacks,
   closes only the pending transport, and replies to both pending requests safely.
 - After the fifth failure, a persistent error explains that automatic reconnect
-  stopped and offers Open Devices / retry. These changes are on `dev`, not in the
-  published v0.2.0 assets.
+  stopped and offers Open Devices / retry.
 - The editor now opens at a computed fit zoom (capped at 200%) rather than a fixed
   200%. Window/label-size changes refit only while Fit mode remains active; manual
   zoom stays manual. The zoom control returns to Fit and uses a fitting icon.
@@ -34,11 +32,10 @@
   chooser opens over the live connection; cancel keeps it, and selecting a device
   explicitly switches only after a native, opaque pending selection is consumed.
   No arbitrary device path is accepted from JavaScript.
-- The label can be panned inside the large bordered stage when zoomed; no extra
-  dotted viewport border is shown. A “Zoomed in: Space+drag to see the full label”
-  caption appears when content extends beyond the stage. Space+left-drag pans
-  without using middle-click, and a fully visible label can move within the empty
-  stage space. Fit recenters it.
+- The large stage is the pan area, with no extra dotted viewport border. A
+  “Zoomed in: Space+drag to see the full label” caption appears when content extends
+  beyond the stage. Space+left-drag moves even a fully visible label within the empty
+  stage space; Ctrl+scroll zooms and Fit recenters.
 
 ## v0.2.0 release review
 
