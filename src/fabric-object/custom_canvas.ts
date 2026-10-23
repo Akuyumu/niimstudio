@@ -64,7 +64,7 @@ export class CustomCanvas extends fabric.Canvas {
         return;
       }
       event.preventDefault();
-      this.panBy(this.panLast.x - event.clientX, this.panLast.y - event.clientY);
+      this.panBy(event.clientX - this.panLast.x, event.clientY - this.panLast.y);
       this.panLast = { x: event.clientX, y: event.clientY };
     });
     window.addEventListener("mouseup", (event) => {

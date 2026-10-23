@@ -77,7 +77,7 @@ export async function runDisplaySmoke(canvas: CustomCanvas) {
   const plainMiddleDoesNotPan = JSON.stringify(canvas.getPanOffset()) === JSON.stringify(noPan);
   drag(0, 1, true);
   await frames();
-  const spaceDragPansLabel = canvas.getPanOffset().x !== noPan.x || canvas.getPanOffset().y !== noPan.y;
+  const spaceDragPansLabel = canvas.getPanOffset().x < noPan.x && canvas.getPanOffset().y < noPan.y;
   viewport.style.maxWidth = "";
   document.querySelector<HTMLButtonElement>('[data-action="fit-zoom"]')!.click();
   await frames();
@@ -97,7 +97,7 @@ export async function runDisplaySmoke(canvas: CustomCanvas) {
   drag(0, 1, true);
   await frames();
   const fittedLabelCanBePanned =
-    canvas.getPanOffset().x !== fittedPanBefore.x || canvas.getPanOffset().y !== fittedPanBefore.y;
+    canvas.getPanOffset().x < fittedPanBefore.x && canvas.getPanOffset().y < fittedPanBefore.y;
   document.querySelector<HTMLButtonElement>('[data-action="fit-zoom"]')!.click();
   await frames();
   const font = document.querySelector<HTMLInputElement>('.studio-formatting [aria-label="Font family"]')!;
