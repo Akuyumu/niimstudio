@@ -10,7 +10,6 @@ export async function runDisplaySmoke(canvas: CustomCanvas) {
   const viewport = document.querySelector<HTMLElement>(".canvas-viewport")!;
   const initialZoomFitsWholeLabel =
     viewport.scrollWidth <= viewport.clientWidth + 2 && viewport.scrollHeight <= viewport.clientHeight + 2;
-  const zoom = canvas.getVirtualZoom();
   const width = canvas.getWidth(),
     height = canvas.getHeight();
   const objects = JSON.stringify(canvas.toObject());
@@ -48,12 +47,11 @@ export async function runDisplaySmoke(canvas: CustomCanvas) {
   await frames();
   await tick();
   const clippedViewIsIndicated =
-    (viewport.classList.contains("is-clipped-x") || viewport.classList.contains("is-clipped-y")) &&
     document.querySelector(".studio-canvas-clip-note")?.textContent?.includes("scroll to see") === true;
   await nativeRequest("testSnapshot", { name: "zoom-clipped" });
   const upper = viewport.querySelector<HTMLCanvasElement>(".upper-canvas")!;
   const rect = upper.getBoundingClientRect();
-  const scrollBeforePan = viewport.scrollLeft;
+  const scrollBeforePlainMiddle = viewport.scrollLeft;
   upper.dispatchEvent(
     new MouseEvent("mousedown", {
       bubbles: true,
@@ -84,18 +82,40 @@ export async function runDisplaySmoke(canvas: CustomCanvas) {
     }),
   );
   await frames();
+  const plainMiddleDoesNotPan = viewport.scrollLeft === scrollBeforePlainMiddle;
+  const scrollBeforePan = viewport.scrollLeft;
+  for (const type of ["mousedown", "mousemove", "mouseup"]) {
+    upper.dispatchEvent(
+      new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        button: 1,
+        buttons: type === "mouseup" ? 0 : 4,
+        ctrlKey: true,
+        clientX: rect.left + (type === "mousemove" ? 60 : 160),
+        clientY: rect.top + (type === "mousemove" ? 40 : 80),
+      }),
+    );
+  }
+  await frames();
   const middleDragPansViewport = viewport.scrollLeft > scrollBeforePan;
   viewport.style.maxWidth = "";
   document.querySelector<HTMLButtonElement>('[data-action="fit-zoom"]')!.click();
   await frames();
   const fitButtonShowsWholeLabel =
-    !viewport.classList.contains("is-clipped-x") &&
-    !viewport.classList.contains("is-clipped-y") &&
-    viewport.scrollWidth <= viewport.clientWidth + 2 &&
-    viewport.scrollHeight <= viewport.clientHeight + 2;
-  canvas.virtualZoom(zoom);
-  canvas.renderAll();
-  await tick();
+    viewport.scrollWidth <= viewport.clientWidth + 2 && viewport.scrollHeight <= viewport.clientHeight + 2;
+  viewport.style.maxWidth = "500px";
+  await frames();
+  const fitTracksViewportResize =
+    viewport.scrollWidth <= viewport.clientWidth + 2 && viewport.scrollHeight <= viewport.clientHeight + 2;
+  viewport.style.maxWidth = "";
+  viewport.style.height = "240px";
+  await frames();
+  const fitTracksViewportHeightResize =
+    viewport.scrollWidth <= viewport.clientWidth + 2 && viewport.scrollHeight <= viewport.clientHeight + 2;
+  viewport.style.height = "";
+  document.querySelector<HTMLButtonElement>('[data-action="fit-zoom"]')!.click();
+  await frames();
   const font = document.querySelector<HTMLInputElement>('.studio-formatting [aria-label="Font family"]')!;
   const fontNameUsesAvailableSpace = font.clientWidth >= 180;
   const devices = document.querySelector<HTMLElement>('[data-action="devices"]')!.getBoundingClientRect();
@@ -112,8 +132,11 @@ export async function runDisplaySmoke(canvas: CustomCanvas) {
     zoomKeepsDocumentGeometry,
     initialZoomFitsWholeLabel,
     clippedViewIsIndicated,
+    plainMiddleDoesNotPan,
     middleDragPansViewport,
     fitButtonShowsWholeLabel,
+    fitTracksViewportResize,
+    fitTracksViewportHeightResize,
     fontNameUsesAvailableSpace,
     headerButtonsAligned,
   };

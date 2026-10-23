@@ -154,6 +154,7 @@ class ConnectionAttemptTests(unittest.TestCase):
         self.device = {"id": "/ble", "name": "B1 Pro", "kind": "bluetooth"}
         self.transport = Mock()
         self.chooser = Mock(closed=False)
+        self.app.open_device = MethodType(StudioApplication.open_device, self.app)
         with patch("niimstudio.app.DeviceChooser", return_value=self.chooser) as make:
             StudioApplication.choose_printer(self.app, 123)
             self.select = make.call_args.args[3]
@@ -230,6 +231,7 @@ class ConnectionAttemptTests(unittest.TestCase):
             send=Mock(),
             ensure_bluez=Mock(),
         )
+        app.open_device = MethodType(StudioApplication.open_device, app)
         with patch("niimstudio.app.BluetoothTransport") as transport:
             StudioApplication.choose_printer(app, 500, automatic=True)
             _resolve, selected, _unavailable = app.run_task.call_args.args
@@ -238,3 +240,63 @@ class ConnectionAttemptTests(unittest.TestCase):
             transport.assert_not_called()
         self.assertFalse(app.connecting)
         self.assertIsNone(app.transport)
+
+    def test_choose_device_keeps_current_transport_and_stores_pending_selection(self):
+        existing = Mock()
+        chooser = Mock(closed=False)
+        app = SimpleNamespace(
+            smoke=False,
+            connecting=False,
+            chooser=None,
+            transport=existing,
+            pending_device=None,
+            reply=Mock(),
+            run_task=Mock(),
+            history=Mock(),
+            window=Mock(),
+            send=Mock(),
+            ensure_bluez=Mock(),
+        )
+        device = {"kind": "bluetooth", "id": "/ble", "name": "B1 Pro", "address": "private"}
+        with patch("niimstudio.app.DeviceChooser", return_value=chooser) as make:
+            StudioApplication.choose_printer_only(app, 600)
+            selected = make.call_args.args[3]
+            selected(device)
+        self.assertIs(app.transport, existing)
+        self.assertIsNone(app.chooser)
+        self.assertFalse(app.connecting)
+        self.assertEqual(app.pending_device, {"kind": "bluetooth", "id": "/ble", "name": "B1 Pro"})
+        app.reply.assert_called_once_with(600, {"device": app.pending_device})
+        chooser.connection_succeeded.assert_called_once()
+
+    def test_connect_pending_uses_native_selection_and_rejects_an_active_transport(self):
+        device = {"kind": "bluetooth", "id": "/ble", "name": "B1 Pro"}
+        app = SimpleNamespace(
+            smoke=False,
+            connecting=False,
+            chooser=None,
+            transport=None,
+            connect_request=None,
+            pending_device=device,
+            generation=0,
+            reply=Mock(),
+            run_task=Mock(),
+            send=Mock(),
+            ensure_bluez=Mock(),
+            selected_device=None,
+        )
+        app.open_device = MethodType(StudioApplication.open_device, app)
+        with patch("niimstudio.app.BluetoothTransport", return_value=Mock()) as transport:
+            StudioApplication.connect_pending(app, 601)
+        self.assertTrue(app.connecting)
+        self.assertEqual(app.connect_request, 601)
+        self.assertIsNone(app.pending_device)
+        transport.assert_called_once()
+        app.run_task.assert_called_once()
+
+        blocked = SimpleNamespace(connecting=False, chooser=None, transport=Mock(), pending_device=device, reply=Mock())
+        StudioApplication.connect_pending(blocked, 602)
+        blocked.reply.assert_called_once_with(
+            602, error="Disconnect the current printer before connecting the selected one"
+        )
+        self.assertEqual(blocked.pending_device, device)

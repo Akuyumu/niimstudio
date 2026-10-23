@@ -30,10 +30,14 @@
 - The editor now opens at a computed fit zoom (capped at 200%) rather than a fixed
   200%. Window/label-size changes refit only while Fit mode remains active; manual
   zoom stays manual. The zoom control returns to Fit and uses a fitting icon.
-- The label sits inside a separate scrollable viewport. When content extends beyond
-  it, a dashed viewing edge and “scroll to see the full label” caption appear, so a
-  cropped view cannot be mistaken for altered label proportions. Middle-button drag
-  pans the zoomed viewport; the caption documents the gesture.
+- Opening Devices while connected no longer tears down the current link. The
+  chooser opens over the live connection; cancel keeps it, and selecting a device
+  explicitly switches only after a native, opaque pending selection is consumed.
+  No arbitrary device path is accepted from JavaScript.
+- The label can be panned inside the large bordered stage when zoomed; no extra
+  dotted viewport border is shown. A “Zoomed in: scroll to see the full label”
+  caption appears when content extends beyond the stage. Ctrl+middle-drag pans,
+  avoiding the desktop middle-click paste gesture.
 
 ## v0.2.0 release review
 
@@ -197,7 +201,7 @@
 
 ## Automated verification
 
-- 107 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
+- 109 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
   fragmentation, service discovery, notifications, and cleanup; mocked pairing
   agents/prompts; palette safety/GTK compositing, bridge validation, and device history.
 - Installer tests cover checksum failure, traversal/links, update rollback,

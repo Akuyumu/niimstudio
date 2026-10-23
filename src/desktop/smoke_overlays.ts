@@ -27,6 +27,13 @@ const metrics = () => {
 const click = (selector: string) => document.querySelector<HTMLButtonElement>(selector)!.click();
 
 export async function runOverlaySmoke() {
+  let previousViewport = "";
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const viewport = `${innerWidth}x${innerHeight}`;
+    if (viewport === previousViewport) break;
+    previousViewport = viewport;
+    await pause(50);
+  }
   click('[data-action="more-tools"]');
   await tick();
   const more = document.querySelector<HTMLElement>('[data-testid="more-tools-menu"]')!;

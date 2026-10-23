@@ -68,6 +68,8 @@ def validate_message(message):
         "quit",
         "testUpdate",
         "connect",
+        "chooseDevice",
+        "connectPending",
         "cancelConnect",
         "disconnect",
         "write",
@@ -107,6 +109,7 @@ class StudioApplication(Adw.Application):
         self.transport = None
         self.connecting = False
         self.connect_request = None
+        self.pending_device = None
         self.generation = 0
         self.shutting_down = False
         self.editor_ready = False
@@ -425,6 +428,10 @@ class StudioApplication(Adw.Application):
                 self.send({"event": "update", "version": "9.9.9", "tag": "v9.9.9"})
             elif operation == "connect":
                 self.choose_printer(request_id, automatic=request.get("automatic") is True)
+            elif operation == "chooseDevice":
+                self.choose_printer_only(request_id)
+            elif operation == "connectPending":
+                self.connect_pending(request_id)
             elif operation == "cancelConnect":
                 self.cancel_connection(request_id)
             elif operation == "knownDevice":
@@ -505,67 +512,7 @@ class StudioApplication(Adw.Application):
             self.reply(request_id, cancelled=True)
 
         def selected(device):
-            if self.connect_request != request_id:
-                return
-            if self.smoke:
-                self.connect_request = None
-                self.reply(request_id, error="Hardware access is disabled in smoke tests")
-                self.connecting = False
-                return
-            self.generation += 1
-            generation = self.generation
-
-            def data_received(data):
-                GLib.idle_add(self.transport_event, generation, {"event": "data", "data": list(data)})
-
-            def disconnected(reason):
-                GLib.idle_add(self.transport_event, generation, {"event": "disconnect", "reason": reason})
-
-            def progress(message):
-                def display():
-                    if generation == self.generation and self.chooser and not self.chooser.closed:
-                        self.chooser.set_status(message)
-                    return GLib.SOURCE_REMOVE
-
-                GLib.idle_add(display)
-
-            transport = (
-                SerialTransport(data_received, disconnected)
-                if device["kind"] == "serial"
-                else BluetoothTransport(self.ensure_bluez(), data_received, disconnected, progress)
-            )
-            self.transport = transport
-            self.selected_device = device
-
-            def opened(_value):
-                if generation != self.generation:
-                    return
-                self.connecting = False
-                if self.connect_request == request_id:
-                    self.connect_request = None
-                if self.chooser:
-                    self.chooser.connection_succeeded()
-                    self.chooser = None
-                self.reply(request_id, {"name": device["name"], "kind": device["kind"]})
-
-            def failed(error):
-                if generation != self.generation:
-                    return
-                self.connecting = False
-                self.transport = None
-                self.run_task(transport.close)
-                if isinstance(error, PermissionError):
-                    error = RuntimeError(
-                        "USB permission denied. See docs/HARDWARE.md for per-device udev access; do not run NiimStudio as root."
-                    )
-                if self.chooser and not self.chooser.closed:
-                    self.chooser.connection_failed(error, device["kind"])
-                else:
-                    if self.connect_request == request_id:
-                        self.connect_request = None
-                    self.reply(request_id, error=error)
-
-            self.run_task(lambda: transport.open(device["id"]), opened, failed)
+            self.open_device(request_id, device)
 
         if automatic:
 
@@ -602,6 +549,118 @@ class StudioApplication(Adw.Application):
                 hardware_enabled=not self.smoke,
             )
             self.chooser.present()
+
+    def open_device(self, request_id, device):
+        if self.connect_request != request_id:
+            return
+        if self.smoke:
+            self.connect_request = None
+            self.reply(request_id, error="Hardware access is disabled in smoke tests")
+            self.connecting = False
+            return
+        self.generation += 1
+        generation = self.generation
+
+        def data_received(data):
+            GLib.idle_add(self.transport_event, generation, {"event": "data", "data": list(data)})
+
+        def disconnected(reason):
+            GLib.idle_add(self.transport_event, generation, {"event": "disconnect", "reason": reason})
+
+        def progress(message):
+            def display():
+                if generation == self.generation and self.chooser and not self.chooser.closed:
+                    self.chooser.set_status(message)
+                return GLib.SOURCE_REMOVE
+
+            GLib.idle_add(display)
+
+        transport = (
+            SerialTransport(data_received, disconnected)
+            if device["kind"] == "serial"
+            else BluetoothTransport(self.ensure_bluez(), data_received, disconnected, progress)
+        )
+        self.transport = transport
+        self.selected_device = device
+
+        def opened(_value):
+            if generation != self.generation:
+                return
+            self.connecting = False
+            if self.connect_request == request_id:
+                self.connect_request = None
+            if self.chooser:
+                self.chooser.connection_succeeded()
+                self.chooser = None
+            self.reply(request_id, {"name": device["name"], "kind": device["kind"]})
+
+        def failed(error):
+            if generation != self.generation:
+                return
+            self.connecting = False
+            self.transport = None
+            self.run_task(transport.close)
+            if isinstance(error, PermissionError):
+                error = RuntimeError(
+                    "USB permission denied. See docs/HARDWARE.md for per-device udev access; do not run NiimStudio as root."
+                )
+            if self.chooser and not self.chooser.closed:
+                self.chooser.connection_failed(error, device["kind"])
+            else:
+                if self.connect_request == request_id:
+                    self.connect_request = None
+                self.reply(request_id, error=error)
+
+        self.run_task(lambda: transport.open(device["id"]), opened, failed)
+
+    def choose_printer_only(self, request_id):
+        """Choose a device without disturbing the currently connected transport."""
+        if self.connecting or self.chooser:
+            self.reply(request_id, error="A printer connection is already in progress")
+            return
+
+        def canceled():
+            self.chooser = None
+            self.reply(request_id, cancelled=True)
+
+        def selected(device):
+            chooser = self.chooser
+            self.chooser = None
+            self.pending_device = {key: device[key] for key in ("kind", "id", "name")}
+            self.reply(request_id, {"device": self.pending_device})
+            if chooser and not chooser.closed:
+                chooser.connection_succeeded()
+
+        try:
+            bluez = self.ensure_bluez()
+        except GLib.Error as error:
+            LOG.info("Bluetooth is unavailable: %s", error)
+            bluez = None
+        self.chooser = DeviceChooser(
+            self.window,
+            bluez,
+            self.run_task,
+            selected,
+            canceled,
+            history=self.history,
+            policy_changed=lambda enabled: self.send({"event": "reconnect-policy", "enabled": enabled}),
+            hardware_enabled=not self.smoke,
+        )
+        self.chooser.present()
+
+    def connect_pending(self, request_id):
+        """Open the device returned by choose_printer_only. No path crosses JS unchecked."""
+        device = self.pending_device
+        if device is None:
+            self.reply(request_id, error="No printer was selected")
+            return
+        if self.connecting or self.chooser or self.transport:
+            self.reply(request_id, error="Disconnect the current printer before connecting the selected one")
+            return
+        self.pending_device = None
+        self.connecting = True
+        self.connect_request = request_id
+        self.open_device(request_id, device)
 
     def cancel_connection(self, request_id):
         """Cancel a pending automatic connection so Devices can be opened."""

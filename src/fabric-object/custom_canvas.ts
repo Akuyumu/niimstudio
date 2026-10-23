@@ -44,7 +44,7 @@ export class CustomCanvas extends fabric.Canvas {
   private setupZoomAndPan() {
     this.on("mouse:down", (opt) => {
       const event = opt.e as MouseEvent;
-      if (event.button !== 1) return;
+      if (event.button !== 1 || !event.ctrlKey) return;
       const viewport = this.getViewport();
       if (!viewport) return;
       event.preventDefault();
@@ -70,6 +70,13 @@ export class CustomCanvas extends fabric.Canvas {
     });
 
     this.on("mouse:up", () => this.stopPanning());
+
+    // WebKit/Linux can otherwise treat middle-click as primary-selection paste.
+    const suppressMiddlePaste = (event: MouseEvent) => {
+      if (event.button === 1 && event.ctrlKey) event.preventDefault();
+    };
+    this.upperCanvasEl.addEventListener("mousedown", suppressMiddlePaste);
+    this.upperCanvasEl.addEventListener("auxclick", suppressMiddlePaste);
 
     this.on("mouse:wheel", (opt) => {
       const event = opt.e as WheelEvent;

@@ -66,11 +66,12 @@ but refreshes the backing store through `getRetinaScaling` at display zoom × DP
 the print raster and exports stay at label resolution. GUI tests compare actual
 export pixels and pointer hit-testing across zoom levels. The native editor starts
 in fit mode: available stage width and 54vh height determine a capped fit ratio.
-The label shape is an inner element inside a separate scrollable viewport, so zoomed
-content is not clipped by rounded-shape overflow. Clipping adds a dashed viewing
-edge and caption; Fit restores the full-canvas view. Middle-button drag scrolls the
-viewport without moving selected objects; touch pinch/pan continues to use the same
-scroll viewport.
+The label shape is an inner element inside the large bordered stage, which is the
+pan/scroll area; there is no second dotted border. Clipping adds a caption while
+Fit restores the full-canvas view. Fit observes both width and height changes and
+remains active until manual zoom. Ctrl+middle-drag scrolls the stage without moving
+selected objects and suppresses middle-click paste; touch pinch/pan continues to use
+the same scroll area.
 
 Launch and quit are deliberately staged. `scripts/niimstudio` selects a system
 interpreter and delegates to `scripts/launch.py`, which chooses the system WebKit or

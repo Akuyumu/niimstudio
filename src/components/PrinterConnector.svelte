@@ -54,7 +54,7 @@
     return Math.min(Math.max(usage, 0), 100);
   };
 
-  const onConnectClicked = async (automatic = false) => {
+  const onConnectClicked = async (automatic = false, pending = false) => {
     const attempt = ++connectionAttempt;
     if (!automatic) {
       reconnect?.pause();
@@ -65,7 +65,7 @@
 
     try {
       if ($printerClient instanceof NativeNiimbotClient) {
-        await $printerClient.connect({ automatic });
+        await $printerClient.connect({ automatic, pending });
         if (attempt !== connectionAttempt) return;
         failure = undefined;
         const history = await nativeRequest<{ enabled: boolean; device: unknown }>("knownDevice");
@@ -116,8 +116,27 @@
         return;
       }
       connectionState.set("disconnected");
+      await onConnectClicked();
+      return;
     }
-    if ($connectionState === "connected") await onDisconnectClicked();
+    if ($connectionState === "connected") {
+      try {
+        await nativeRequest("chooseDevice", {}, 600_000);
+      } catch (error) {
+        if (!isUserCancelled(error)) failure = connectionFeedback(error);
+        return;
+      }
+      try {
+        if ($printerClient instanceof NativeNiimbotClient) await $printerClient.disconnect({ intentional: true });
+        else await $printerClient.disconnect();
+      } catch (error) {
+        failure = connectionFeedback(error);
+        return;
+      }
+      connectionState.set("disconnected");
+      await onConnectClicked(false, true);
+      return;
+    }
     await onConnectClicked();
   };
 

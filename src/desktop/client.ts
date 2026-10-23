@@ -30,7 +30,7 @@ export class NativeNiimbotClient extends NiimbotAbstractClient {
     return info;
   }
 
-  async connect(options?: { automatic?: boolean }): Promise<ConnectionInfo> {
+  async connect(options?: { automatic?: boolean; pending?: boolean }): Promise<ConnectionInfo> {
     if (this.connected) await this.disconnect();
     this.unlisten?.();
     this.unlisten = onNativeEvent((message) => {
@@ -39,9 +39,9 @@ export class NativeNiimbotClient extends NiimbotAbstractClient {
     });
     try {
       const device = await nativeRequest<{ name: string; kind: string }>(
-        "connect",
-        { automatic: options?.automatic === true },
-        options?.automatic ? 90_000 : 600_000,
+        options?.pending ? "connectPending" : "connect",
+        options?.pending ? {} : { automatic: options?.automatic === true },
+        600_000,
       );
       this.transportKind = device.kind;
       this.connected = true;

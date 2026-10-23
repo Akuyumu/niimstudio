@@ -48,8 +48,9 @@
   let { saveTemplate }: { saveTemplate?: () => void } = $props();
 
   let htmlCanvas: HTMLCanvasElement;
-  let stageColumn = $state<HTMLElement>();
   let canvasViewport = $state<HTMLElement>();
+  let fitObserver: ResizeObserver | undefined;
+  let fitFrame: number | undefined;
 
   let fabricCanvas = $state<CustomCanvas>();
   let labelProps = $state<LabelProps>(
@@ -61,7 +62,6 @@
   let editRevision = $state<number>(0);
   let printNow = $state<boolean>(false);
   let csvEnabled = $state<boolean>(false);
-  let windowWidth = $state<number>(0);
   let undoState = $state<UndoState>({ undoDisabled: false, redoDisabled: false });
   let zoomText = $state<string>("100%");
   let zoomMode = $state<"fit" | "manual">(isNative ? "fit" : "manual");
@@ -207,20 +207,15 @@
   };
 
   const fitCanvasToViewport = () => {
-    if (!isNative || !fabricCanvas || !stageColumn || !canvasViewport) return;
+    if (!isNative || !fabricCanvas || !canvasViewport) return;
     zoomMode = "fit";
-    requestAnimationFrame(() => {
-      if (!fabricCanvas || !stageColumn || !canvasViewport) return;
-      const style = getComputedStyle(stageColumn);
-      const availableWidth = Math.max(
-        1,
-        stageColumn.clientWidth -
-          Number.parseFloat(style.paddingLeft || "0") -
-          Number.parseFloat(style.paddingRight || "0") -
-          6,
-      );
-      const maxHeight = Number.parseFloat(getComputedStyle(canvasViewport).maxHeight);
-      const availableHeight = Math.max(1, (Number.isFinite(maxHeight) ? maxHeight : window.innerHeight * 0.54) - 6);
+    if (fitFrame !== undefined) cancelAnimationFrame(fitFrame);
+    fitFrame = requestAnimationFrame(() => {
+      fitFrame = undefined;
+      if (!fabricCanvas || !canvasViewport) return;
+      const availableWidth = Math.max(1, canvasViewport.clientWidth - 8);
+      const availableHeight = Math.max(1, canvasViewport.clientHeight - 8);
+      if (availableWidth < 32 || availableHeight < 32) return;
       const zoom = fitZoom(fabricCanvas.getWidth(), fabricCanvas.getHeight(), availableWidth, availableHeight);
       if (zoom === undefined) return;
       fabricCanvas.virtualZoom(zoom, "api");
@@ -493,6 +488,10 @@
       if (source === "user") zoomMode = "manual";
       requestAnimationFrame(updateClipState);
     };
+    fitObserver = new ResizeObserver(() => {
+      if (zoomMode === "fit") fitCanvasToViewport();
+    });
+    if (canvasViewport) fitObserver.observe(canvasViewport);
     fabricCanvas.setGridEnabled(!!$appConfig.gridEnabled);
 
     let restored = false;
@@ -713,6 +712,8 @@
     window.removeEventListener("beforeunload", saveDraft);
     delete window.__niimstudioSmokeTest;
     delete window.__niimstudioPrepareClose;
+    fitObserver?.disconnect();
+    if (fitFrame !== undefined) cancelAnimationFrame(fitFrame);
     fabricCanvas!.dispose();
     window.removeEventListener("hashchange", loadLabelFromUrl);
   });
@@ -734,22 +735,18 @@
   });
 
   $effect(() => {
-    const width = windowWidth;
     const size = `${labelProps.size.width}x${labelProps.size.height}`;
-    if (!isNative || !draftReady || zoomMode !== "fit" || !width || !size) return;
-    requestAnimationFrame(fitCanvasToViewport);
+    if (!isNative || !draftReady || zoomMode !== "fit" || !size) return;
+    fitCanvasToViewport();
   });
 </script>
 
-<svelte:window bind:innerWidth={windowWidth} onkeydown={onKeyDown} onpaste={onPaste} />
+<svelte:window onkeydown={onKeyDown} onpaste={onPaste} />
 
 <div class="image-editor">
   <div class="row mb-3 studio-stage">
-    <div class="col d-flex justify-content-center" bind:this={stageColumn}>
-      <div
-        class="canvas-viewport {clippedX ? 'is-clipped-x' : ''} {clippedY ? 'is-clipped-y' : ''}"
-        bind:this={canvasViewport}
-        onscroll={updateClipState}>
+    <div class="col d-flex justify-content-center">
+      <div class="canvas-viewport" bind:this={canvasViewport} onscroll={updateClipState}>
         <div
           class="canvas-wrapper print-start-{labelProps.printDirection} label-shape-{labelProps.shape ?? 'rect'}"
           style:--label-preview-radius={`${Number.parseFloat(zoomText) / 10}px`}>
@@ -757,7 +754,7 @@
         </div>
       </div>
       {#if isNative}<div class="studio-canvas-caption">
-          {labelProps.size.width} × {labelProps.size.height} px · Ctrl + scroll to zoom · middle-drag to pan · {draftState}
+          {labelProps.size.width} × {labelProps.size.height} px · Ctrl + scroll to zoom · Ctrl+middle-drag to pan · {draftState}
           {#if clippedX || clippedY}<span class="studio-canvas-clip-note">
               · Zoomed in: scroll to see the full label</span
             >{/if}
@@ -963,20 +960,19 @@
 
 <style>
   .canvas-viewport {
-    width: fit-content;
-    max-width: 100%;
-    max-height: 70vh;
+    display: flex;
+    flex: none;
+    width: 100%;
+    height: max(200px, calc(100dvh - 420px));
+    min-height: 0;
     overflow: auto;
     line-height: 0;
   }
-  .canvas-viewport.is-clipped-x,
-  .canvas-viewport.is-clipped-y {
-    outline: 1px dashed color-mix(in srgb, var(--studio-accent) 60%, transparent);
-    outline-offset: 4px;
-  }
   .canvas-wrapper {
+    margin: auto;
     display: block;
     width: max-content;
+    flex: none;
     border: 1px solid rgba(0, 0, 0, 0.4);
     background-color: rgba(60, 55, 63, 0.5);
   }

@@ -42,6 +42,11 @@ different printer can be selected. It never replays an interrupted print. A
 deliberate disconnect pauses retries for that session. Disable **Reconnect
 automatically** in Devices to persistently opt out.
 
+Opening **Devices** while already connected no longer disconnects first. The current
+printer stays connected while the chooser is open. Closing the chooser keeps it;
+selecting a device explicitly switches to that device (the old link is closed only
+after selection).
+
 ## Automatic stock setup
 
 Paper dimensions come from NiimBlueLib's validated paper-info response, not from

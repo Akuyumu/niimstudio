@@ -165,6 +165,15 @@ export async function runEditorSmoke(context: {
   await new Promise((resolve) => setTimeout(resolve, 150));
   const deviceCancellationSilent =
     deviceChooserOpened && get(connectionState) === "disconnected" && !document.querySelector(".toast-danger");
+  connectionState.set("connected");
+  await tick();
+  deviceButton.click();
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  const switchChooserOpened = await nativeRequest<boolean>("testDismissDevices");
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  const devicesKeepsCurrentConnection = switchChooserOpened && get(connectionState) === "connected";
+  connectionState.set("disconnected");
+  await tick();
   const originalConnect = NativeNiimbotClient.prototype.connect;
   let connectionFailureHelpful = false;
   let connectionFailureDismisses = false;
@@ -218,6 +227,7 @@ export async function runEditorSmoke(context: {
       displayWorks &&
       codesWork &&
       deviceCancellationSilent &&
+      devicesKeepsCurrentConnection &&
       autoConnectControlVisible &&
       connectionFailureHelpful &&
       connectionFailureDismisses &&
@@ -244,6 +254,7 @@ export async function runEditorSmoke(context: {
     ...displayResults,
     ...codeResults,
     deviceCancellationSilent,
+    devicesKeepsCurrentConnection,
     autoConnectControlVisible,
     connectionFailureHelpful,
     connectionFailureDismisses,

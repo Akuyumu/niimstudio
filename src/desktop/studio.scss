@@ -270,13 +270,14 @@
   }
   .studio-stage > .col {
     min-width: 0;
-    padding: 32px;
-    align-items: center;
+    min-height: 0;
+    padding: 24px 32px;
+    align-items: stretch;
     flex-direction: column;
-    gap: 24px;
+    gap: 14px;
   }
   .studio-stage .canvas-viewport {
-    max-height: 54vh;
+    max-height: none;
   }
   .studio-stage .canvas-wrapper {
     box-shadow: var(--studio-paper-shadow);

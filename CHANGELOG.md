@@ -7,9 +7,11 @@
   print job disables it. Automatic retry exhaustion is reported with a clear action.
 - The editor starts at a computed fit zoom instead of a hardcoded 200%, so the whole
   label and its true aspect ratio are visible. The zoom control now returns to Fit.
-- When zoomed in, an inset viewing outline and “scroll to see the full label” note
-  distinguish a cropped viewport from an incorrectly sized label. The label shape
-  remains inside a separate scrollable viewport; middle-button drag pans it.
+- When zoomed in, a “scroll to see the full label” note distinguishes a cropped view
+  from an incorrectly sized label. The large bordered stage is the pan/scroll area;
+  Ctrl+middle-drag pans without triggering the system middle-click paste gesture.
+- Opening Devices while connected keeps the current link active. Closing the chooser
+  changes nothing; selecting another device switches only after that explicit choice.
 
 # NiimStudio 0.2.0
 
