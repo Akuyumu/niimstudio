@@ -48,6 +48,20 @@ class DeviceHistory:
         ][:10]
         self.save()
 
+    def forget_remembered(self):
+        """Remove the current auto-connect target and its USB/BLE variants."""
+        if not self.recent:
+            return False
+        previous = self.recent
+        name = previous[0]["name"]
+        self.recent = [device for device in previous if device["name"] != name]
+        try:
+            self.save()
+        except OSError:
+            self.recent = previous
+            raise
+        return True
+
     def info(self):
         return {"enabled": self.auto_reconnect, "device": self.recent[0] if self.recent else None}
 

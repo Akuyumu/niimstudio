@@ -32,6 +32,9 @@
   chooser opens over the live connection; cancel keeps it, and selecting a device
   explicitly switches only after a native, opaque pending selection is consumed.
   No arbitrary device path is accepted from JavaScript.
+- Devices shows the current auto-connect target with a Forget action. It removes the
+  printer name and its USB/BLE variants from history, stops targeting it for automatic
+  reconnect, and leaves a currently connected printer connected.
 - The large stage is the pan area, with no extra dotted viewport border. A
   “Zoomed in: Space+drag to see the full label” caption appears when content extends
   beyond the stage. Space+left-drag moves even a fully visible label within the empty
@@ -199,7 +202,7 @@
 
 ## Automated verification
 
-- 109 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
+- 111 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
   fragmentation, service discovery, notifications, and cleanup; mocked pairing
   agents/prompts; palette safety/GTK compositing, bridge validation, and device history.
 - Installer tests cover checksum failure, traversal/links, update rollback,

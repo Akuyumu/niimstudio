@@ -6,7 +6,7 @@ type NativeMessage = {
   value?: unknown;
   error?: string;
   cancelled?: boolean;
-  event?: "data" | "disconnect" | "theme" | "reconnect-policy" | "fonts" | "update" | "updateProgress";
+  event?: "data" | "disconnect" | "theme" | "reconnect-policy" | "known-device" | "fonts" | "update" | "updateProgress";
   enabled?: boolean;
   data?: number[];
   palette?: Palette;
@@ -16,6 +16,7 @@ type NativeMessage = {
   state?: "ready" | "failed";
   message?: string;
   reason?: string;
+  device?: unknown;
 };
 
 declare global {

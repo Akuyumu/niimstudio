@@ -55,3 +55,19 @@ class HistoryTests(unittest.TestCase):
             ):
                 path.write_text(contents)
                 self.assertEqual(DeviceHistory(path).recent, [])
+
+    def test_forget_removes_last_printer_name_and_usb_ble_variants(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.json"
+            history = DeviceHistory(path)
+            history.recent = [
+                {"kind": "bluetooth", "id": "/ble", "name": "B1 Pro"},
+                {"kind": "serial", "id": "/usb", "name": "B1 Pro"},
+                {"kind": "serial", "id": "/other", "name": "Other"},
+            ]
+            self.assertTrue(history.forget_remembered())
+            self.assertEqual([item["name"] for item in history.recent], ["Other"])
+            self.assertEqual(DeviceHistory(path).info()["device"]["name"], "Other")
+            self.assertTrue(history.forget_remembered())
+            self.assertEqual(history.recent, [])
+            self.assertFalse(history.forget_remembered())

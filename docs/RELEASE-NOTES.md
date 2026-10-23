@@ -14,6 +14,9 @@ remains available and unchanged.
 - **Changing printers does not disconnect first:** opening Devices while connected
   leaves the current print link active. Closing the chooser keeps it; selecting a
   different printer switches only after that explicit choice.
+- **Forget an auto-connect printer:** Devices now shows the remembered target with a
+  **Forget** action. It removes that printer name, including its USB/BLE variants,
+  stops automatic retries for it, and keeps any current connection open.
 - **Fit view by default:** the editor measures the available stage instead of using
   a fixed 200% zoom, keeping the whole label and its true proportions visible.
   Fit updates when the window width or height changes.

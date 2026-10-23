@@ -71,6 +71,19 @@ class DeviceFeedbackTests(unittest.TestCase):
         chooser.policy_changed.assert_not_called()
         self.assertIn("previous preference was kept", chooser.failure)
 
+    def test_forget_printer_updates_row_and_notifies_frontend(self):
+        chooser = self.chooser()
+        chooser.remembered = Mock()
+        chooser.history = Mock(recent=[{"kind": "serial", "id": "/usb", "name": "B1 Pro"}])
+        chooser.history.forget_remembered.side_effect = lambda: chooser.history.recent.clear() or True
+        chooser.history_changed = Mock()
+        chooser.update_remembered = MethodType(DeviceChooser.update_remembered, chooser)
+        DeviceChooser.forget_remembered(chooser)
+        chooser.history.forget_remembered.assert_called_once()
+        chooser.history_changed.assert_called_once()
+        chooser.remembered.set_visible.assert_called_with(False)
+        self.assertIn("No printer will auto-connect", chooser.status.set_description.call_args.args[0])
+
     def test_classic_tip_explains_pairing_will_not_enable_ble(self):
         self.assertIn("Pairing the classic entry will not enable BLE", connection_tip("classic Serial Port"))
 

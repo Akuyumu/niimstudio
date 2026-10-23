@@ -11,6 +11,9 @@ previous stable release.
   print job disables it. Retry exhaustion is reported with a clear action.
 - Opening Devices while connected keeps the current link active. Closing the chooser
   changes nothing; selecting another device switches only after that explicit choice.
+- Devices shows the current auto-connect target with a **Forget** action. It removes
+  that printer name plus its USB/BLE variants from remembered history and stops
+  auto-connect attempts without disconnecting the current printer.
 - The editor starts at a computed fit zoom instead of a hardcoded 200%, so the whole
   label and its true aspect ratio are visible. Fit tracks window size changes.
 - The large stage is the pan area. Space+left-drag moves the label, including when it

@@ -23,7 +23,16 @@ def offer_pairing(device, authentication_failures):
 
 class DeviceChooser(Adw.Window):
     def __init__(
-        self, parent, bluez, run_task, on_selected, on_cancel, history=None, policy_changed=None, hardware_enabled=True
+        self,
+        parent,
+        bluez,
+        run_task,
+        on_selected,
+        on_cancel,
+        history=None,
+        policy_changed=None,
+        hardware_enabled=True,
+        history_changed=None,
     ):
         super().__init__(
             title="Select a printer", transient_for=parent, modal=True, default_width=620, default_height=580
@@ -47,6 +56,7 @@ class DeviceChooser(Adw.Window):
         self.connecting_device = None
         self.history = history
         self.policy_changed = policy_changed
+        self.history_changed = history_changed
         self.connect("close-request", self._closed)
 
         layout = Adw.ToolbarView()
@@ -69,6 +79,16 @@ class DeviceChooser(Adw.Window):
             row.add_suffix(reconnect)
             row.set_activatable_widget(reconnect)
             self.message.add(row)
+            self.remembered = Adw.ActionRow()
+            self.remembered.set_activatable_widget(None)
+            forget = Gtk.Button(label="Forget", valign=Gtk.Align.CENTER)
+            forget.set_tooltip_text(
+                "Remove this printer name, including its USB and Bluetooth entries, from automatic reconnect"
+            )
+            forget.connect("clicked", lambda _button: self.forget_remembered())
+            self.remembered.add_suffix(forget)
+            self.message.add(self.remembered)
+            self.update_remembered()
 
             self.reconnect_handler = reconnect.connect("notify::active", self.reconnect_changed)
         scan = Gtk.Button(label="Scan for printers", icon_name="view-refresh-symbolic")
@@ -113,6 +133,36 @@ class DeviceChooser(Adw.Window):
             return
         if self.policy_changed:
             self.policy_changed(self.history.auto_reconnect)
+
+    def update_remembered(self):
+        if not getattr(self, "remembered", None):
+            return
+        record = self.history.recent[0] if self.history and self.history.recent else None
+        self.remembered.set_visible(record is not None)
+        if record:
+            kind = "USB" if record["kind"] == "serial" else "Bluetooth LE"
+            self.remembered.set_title(f"Auto-connect: {record['name']}")
+            self.remembered.set_subtitle(f"{kind} · Forget removes this printer name plus USB/BLE variants")
+
+    def forget_remembered(self):
+        if not self.history or not self.history.recent:
+            return
+        name = self.history.recent[0]["name"]
+        try:
+            self.history.forget_remembered()
+        except OSError as error:
+            self.failure = f"Could not forget {name}: {error}. The remembered printer was kept."
+            self.set_status(self.failure)
+            return
+        self.update_remembered()
+        if self.history_changed:
+            self.history_changed()
+        if self.history.recent:
+            self.set_status(
+                f"Forgot {name}. The next remembered printer is auto-connect: {self.history.recent[0]['name']}."
+            )
+        else:
+            self.set_status(f"Forgot {name}. No printer will auto-connect; connect one to remember it again.")
 
     def show_failure(self, action, error, kind="bluetooth"):
         self.failure = f"{action} failed: {error}\n{connection_tip(error, kind)}"

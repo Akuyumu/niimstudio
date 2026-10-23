@@ -45,7 +45,9 @@ automatically** in Devices to persistently opt out.
 Opening **Devices** while already connected no longer disconnects first. The current
 printer stays connected while the chooser is open. Closing the chooser keeps it;
 selecting a device explicitly switches to that device (the old link is closed only
-after selection).
+after selection). **Forget** removes the remembered auto-connect printer, including
+USB/BLE variants with the same name, without disconnecting the live printer. Turn off
+**Reconnect automatically** to disable auto-connect for all printers.
 
 ## Automatic stock setup
 

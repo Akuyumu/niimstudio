@@ -205,6 +205,10 @@
       );
       unlisten = onNativeEvent((message) => {
         if (message.event === "disconnect" && autoAllowed && hasRememberedDevice) reconnect?.start();
+        if (message.event === "known-device") {
+          hasRememberedDevice = !!message.device;
+          if (!hasRememberedDevice) reconnect?.pause();
+        }
         if (message.event === "reconnect-policy") {
           autoAllowed = message.enabled === true;
           if (!autoAllowed) reconnect?.pause();

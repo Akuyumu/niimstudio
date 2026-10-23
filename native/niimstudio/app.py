@@ -547,6 +547,7 @@ class StudioApplication(Adw.Application):
                 history=self.history,
                 policy_changed=lambda enabled: self.send({"event": "reconnect-policy", "enabled": enabled}),
                 hardware_enabled=not self.smoke,
+                history_changed=lambda: self.send({"event": "known-device", "device": self.history.info()["device"]}),
             )
             self.chooser.present()
 
@@ -645,6 +646,7 @@ class StudioApplication(Adw.Application):
             history=self.history,
             policy_changed=lambda enabled: self.send({"event": "reconnect-policy", "enabled": enabled}),
             hardware_enabled=not self.smoke,
+            history_changed=lambda: self.send({"event": "known-device", "device": self.history.info()["device"]}),
         )
         self.chooser.present()
 
