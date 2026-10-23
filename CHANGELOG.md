@@ -1,8 +1,13 @@
 # Unreleased
 
-- Treat the documented 20–50 mm media range on B21/B21S models separately from
-  their 384-pixel printable head. This restores the 50×30 mm picker preset and allows
-  a reported 50 mm roll to auto-detect with a 48 mm printable canvas.
+- Treat physical media width separately from printable head width for every model
+  in the pinned NIIMBOT library. The documented head classes expose their real
+  stock range: 12→15 mm, 24→25 mm, 48/50→50 mm, 56→60 mm, 72→75 mm, 80→82 mm and
+  104→108 mm, with model-specific exceptions such as B1 SE (54 mm), M3 (78 mm),
+  B31 (77 mm) and T2S (107 mm).
+- This restores 50×30 mm stock for all 2-inch models (including B21S), 60×40 mm
+  for K2 and the larger presets for 3-/4-inch printers. Reported rolls auto-detect
+  with the printable canvas capped at the real head width and an edge-margin notice.
 
 # NiimStudio 0.3.0
 

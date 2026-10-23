@@ -76,16 +76,52 @@ export const stockSizes = [
 
 export const offlineProfile: PrinterProfile = { dpi: 203, dpmm: 8, printDirection: "left", printheadPixels: 0 };
 
-// Physical media range is not the printable head width. These documented 2-inch
-// models accept 50 mm rolls even though their 203-DPI head prints about 48 mm.
-// Sources: NIIMBOT B1/B21/B21S product specifications and B21S 50×30 starter stock.
-const DOCUMENTED_MEDIA_BOUNDS = {
-  [PrinterModel.B1_PRO]: { minWidth: 20, maxWidth: 50, minHeight: 8, maxHeight: 350 },
-  [PrinterModel.B1]: { minWidth: 20, maxWidth: 50, minHeight: 8, maxHeight: 350 },
-  [PrinterModel.B21]: { minWidth: 20, maxWidth: 50, minHeight: 8, maxHeight: 350 },
-  [PrinterModel.B21S]: { minWidth: 20, maxWidth: 50, minHeight: 8, maxHeight: 350 },
-  [PrinterModel.B21S_C2B]: { minWidth: 20, maxWidth: 50, minHeight: 8, maxHeight: 350 },
-} as const;
+// NIIMBOT's hardware configuration treats printable head width and physical media
+// width separately. Its model table gives 48 mm heads a 50 mm media default, K2's
+// 56 mm head 60 mm media, 72 mm heads 75 mm media, K3's 80 mm head 82 mm, and B4's
+// 104 mm head 108 mm. The same table documents 15 mm media for 12 mm D11-class
+// heads and 25 mm media for 24 mm D101-class heads. Several entries are clearly
+// inconsistent (for example 200 mm on some 48 mm models and 82 mm on K4), so use
+// the head class as the fallback and only admit values confirmed by the model data.
+// Source: https://print.niimbot.com/api/hardware/list (model configuration).
+const MEDIA_WIDTH_BY_HEAD_MM = [
+  [12, 15],
+  [15, 15],
+  [25, 25],
+  [48, 50],
+  [50, 50],
+  [59, 60],
+  [72, 75],
+  [75, 77],
+  [80, 82],
+  [104, 108],
+] as const;
+
+// The cloud table has a few valid per-model exceptions to the head class.
+const MEDIA_WIDTH_OVERRIDES: Partial<Record<PrinterModel, number>> = {
+  [PrinterModel.B1_SE]: 54,
+  [PrinterModel.B3]: 75,
+  [PrinterModel.S6_P]: 75,
+  [PrinterModel.M3]: 78,
+  [PrinterModel.EP3M]: 78,
+  [PrinterModel.T2S]: 107,
+};
+
+// B11/B21S-class guides accept narrower stock than the B1/B2 family.
+const MEDIA_MIN_WIDTH_OVERRIDES: Partial<Record<PrinterModel, number>> = {
+  [PrinterModel.B11]: 10,
+  [PrinterModel.B21S]: 10,
+  [PrinterModel.B21_C2B]: 10,
+};
+
+function documentedMediaBounds(meta: PrinterModelMeta) {
+  const dpmm = meta.dpi === 203 ? 8 : meta.dpi / 25.4;
+  const headMm = Math.round(meta.printheadPixels / dpmm);
+  const widthClass = MEDIA_WIDTH_BY_HEAD_MM.find(([headMax]) => headMm <= headMax);
+  const maxWidth = MEDIA_WIDTH_OVERRIDES[meta.model as PrinterModel] ?? widthClass?.[1] ?? Math.ceil(headMm);
+  const minWidth = MEDIA_MIN_WIDTH_OVERRIDES[meta.model as PrinterModel] ?? (headMm >= 48 ? 20 : headMm >= 24 ? 12 : 8);
+  return { minWidth, maxWidth, minHeight: 8, maxHeight: 350 };
+}
 
 export function printerProfile(
   meta?: PrinterModelMeta,
@@ -101,15 +137,14 @@ export function printerProfile(
       ? reportedHead!
       : meta.printheadPixels;
   if (![203, 300, 600].includes(dpi)) return;
-  const mediaBounds = DOCUMENTED_MEDIA_BOUNDS[meta.model as keyof typeof DOCUMENTED_MEDIA_BOUNDS];
   return {
     dpi,
     dpmm: dpi === 203 ? 8 : dpi / 25.4,
     printDirection: meta.printDirection,
     printheadPixels,
     // Keep NiimBlueLib's conservative printable-head limit; use documented
-    // physical-stock bounds separately so 50 mm rolls are not misclassified.
-    ...(mediaBounds ? { mediaBounds } : {}),
+    // physical-stock bounds separately so wider rolls are not misclassified.
+    mediaBounds: documentedMediaBounds(meta),
   };
 }
 

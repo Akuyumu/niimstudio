@@ -57,10 +57,16 @@ excludes its gap. Pixel/mm consistency, printhead width, finite positive sizes,
 and protocol byte alignment are checked before use. DPI comes from capabilities
 when available, otherwise the known model profile; feed direction comes from that
 profile. Recognized media type also sets gaps/black-mark handling in Preview.
-B1, B21 and B21S models document physical label widths up to 50 mm even though
-their 203-DPI printable head covers about 48 mm. NiimStudio therefore treats the
-physical stock range separately from the printable raster, allowing 50×30 mm stock
-while showing non-printable edge margins. This is not a SKU lookup or inferred size.
+NIIMBOT documents a physical media width and a separate printable head width.
+Across the supported library, the head classes map to stock limits of 15 mm for
+12 mm heads, 25 mm for 24 mm heads, 50 mm for 48–50 mm heads, 60 mm for 56 mm
+heads, 75 mm for 72 mm heads, 82 mm for 80 mm heads and 108 mm for 104 mm heads,
+with confirmed model exceptions such as B1 SE (54 mm), M3 (78 mm), B31 (77 mm)
+and T2S (107 mm). NiimStudio applies those physical limits to the picker and to
+reported rolls, then caps the printable canvas at the real head width. Thus a
+50×30 mm roll works on a 48 mm 2-inch head with non-printable edge margins, and
+a 60×40 mm roll works on K2's 56 mm head. This is hardware metadata, not a SKU
+lookup or an inferred roll size.
 **B1 Pro height correction:** its firmware-2.12 response reports 30 mm/354 px
 sticker height plus a separate 6 mm/70 px field. NiimBlueLib 0.47.0 incorrectly
 subtracted the latter unconditionally, yielding 24 mm/284 px. NiimStudio backports

@@ -108,8 +108,11 @@ printer resolution. `StockSetup.svelte` replaces raw desktop size/DPI/direction
 controls: reported media configures an untouched canvas; existing artwork gets a
 confirmation. Non-reporting stock uses fixed-size cards. Known B1 Pro physical
 media limits (20–50 mm across the head) are separate from its printable head width;
-50 mm stock uses an explicitly labelled smaller printable canvas. Other printers
-without a documented physical-stock range retain conservative head-width filtering.
+50 mm stock uses an explicitly labelled smaller printable canvas. The rest of the
+supported library uses documented head-class media width limits (12→15, 24→25,
+48/50→50, 56→60, 72→75, 80→82, 104→108 mm) with confirmed per-model exceptions.
+The printable raster is always capped at the actual head width independently of
+the physical stock limit. Unknown models fall back to the nearest head class.
 Reported pixel dimensions take precedence when consistent with millimeters; head
 width maps to canvas height for left feed and width for top feed. Head pixels are
 byte-aligned. No product-code size database or speculative shape inference is used.

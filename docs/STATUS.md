@@ -18,10 +18,16 @@
 - B21S uses a 384-pixel/203-DPI printable head but documents 20–50 mm label widths.
   The media picker had treated printable width as physical width, hiding 50×30 mm
   stock, and auto-detection rejected a reported 50 mm roll for the same reason.
-- Documented media bounds for B1/B21/B21S now allow 50 mm stock while capping the
-  printable raster at 48 mm and labelling the edge margins. This is device metadata,
-  not a guessed SKU size. B21S still needs user confirmation that auto-detection
-  succeeds with the actual printer reply.
+- Audited every model in the pinned NIIMBOT library against its hardware
+  configuration. Physical stock width is now derived from the documented head
+  class (12→15, 24→25, 48/50→50, 56→60, 72→75, 80→82, 104→108 mm) with confirmed
+  per-model exceptions. This exposes 50 mm stock on all 2-inch models, 60 mm stock
+  on K2, and the larger presets on 3-/4-inch printers; the printable raster remains
+  capped at the reported head width with an edge-margin notice.
+- Unknown future models fall back to the nearest documented head class rather than
+  losing the physical-media allowance. B21S and the other newly covered models still
+  need user confirmation that auto-detection succeeds with their actual printer
+  replies; no physical print was performed for this audit.
 
 ## v0.3.0
 
@@ -222,11 +228,12 @@
 - Ubuntu CI exercises the actual installed native app and real Flatpak GUI on
   x86-64 and ARM64. Exported Flatpak bundles are installed/reinstalled with a
   retained-data fixture before publishing, not merely built as manifests.
-- 48 Node tests: settings/read-back, media reads, saved-roll identity, fit/clip zoom,
+- 54 Node tests: settings/read-back, media reads, saved-roll identity, fit/clip zoom,
   connection
   troubleshooting tips, CSV safety, print validation, undo, reconnect, every printable
-  Code 128 character, EAN-13, cancellation, media validation, head-width/rotation
-  mapping, resolution priority, and safe preset conversion.
+  Code 128 character, EAN-13, cancellation, media validation, all-library
+  media-width classes, head-width/rotation mapping, resolution priority, and safe
+  preset conversion.
 - Actual GTK/WebKit smoke profile: editor objects, image import, serialization,
   undo/redo, preview/encoding, palette application, draft storage, native chooser,
   invalid-save protection, quota rollback, template drawer/search/save, and the
