@@ -8,8 +8,13 @@ export async function runDisplaySmoke(canvas: CustomCanvas) {
     new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
   await frames();
   const viewport = document.querySelector<HTMLElement>(".canvas-viewport")!;
-  const initialZoomFitsWholeLabel =
-    viewport.scrollWidth <= viewport.clientWidth + 2 && viewport.scrollHeight <= viewport.clientHeight + 2;
+  const label = viewport.querySelector<HTMLElement>(".canvas-wrapper")!;
+  const labelFitsViewport = () => {
+    const area = viewport.getBoundingClientRect();
+    const shown = label.getBoundingClientRect();
+    return shown.width <= area.width + 2 && shown.height <= area.height + 2;
+  };
+  const initialZoomFitsWholeLabel = labelFitsViewport();
   const width = canvas.getWidth(),
     height = canvas.getHeight();
   const objects = JSON.stringify(canvas.toObject());
@@ -43,77 +48,56 @@ export async function runDisplaySmoke(canvas: CustomCanvas) {
   viewport.style.maxWidth = "420px";
   canvas.virtualZoom(4, "user");
   canvas.renderAll();
-  viewport.dispatchEvent(new Event("scroll"));
   await frames();
   await tick();
   const clippedViewIsIndicated =
-    document.querySelector(".studio-canvas-clip-note")?.textContent?.includes("scroll to see") === true;
+    document.querySelector(".studio-canvas-clip-note")?.textContent?.includes("Space+drag") === true;
   await nativeRequest("testSnapshot", { name: "zoom-clipped" });
   const upper = viewport.querySelector<HTMLCanvasElement>(".upper-canvas")!;
   const rect = upper.getBoundingClientRect();
-  const scrollBeforePlainMiddle = viewport.scrollLeft;
-  upper.dispatchEvent(
-    new MouseEvent("mousedown", {
-      bubbles: true,
-      cancelable: true,
-      button: 1,
-      buttons: 4,
-      clientX: rect.left + 160,
-      clientY: rect.top + 80,
-    }),
-  );
-  upper.dispatchEvent(
-    new MouseEvent("mousemove", {
-      bubbles: true,
-      cancelable: true,
-      button: 1,
-      buttons: 4,
-      clientX: rect.left + 60,
-      clientY: rect.top + 40,
-    }),
-  );
-  upper.dispatchEvent(
-    new MouseEvent("mouseup", {
-      bubbles: true,
-      cancelable: true,
-      button: 1,
-      clientX: rect.left + 60,
-      clientY: rect.top + 40,
-    }),
-  );
+  const drag = (button: number, buttons: number, withSpace: boolean) => {
+    if (withSpace) window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", bubbles: true }));
+    for (const type of ["mousedown", "mousemove", "mouseup"]) {
+      upper.dispatchEvent(
+        new MouseEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          button,
+          buttons: type === "mouseup" ? 0 : buttons,
+          clientX: rect.left + (type === "mousemove" ? 60 : 160),
+          clientY: rect.top + (type === "mousemove" ? 40 : 80),
+        }),
+      );
+    }
+    if (withSpace) window.dispatchEvent(new KeyboardEvent("keyup", { code: "Space", bubbles: true }));
+  };
+  const noPan = canvas.getPanOffset();
+  drag(1, 4, false);
   await frames();
-  const plainMiddleDoesNotPan = viewport.scrollLeft === scrollBeforePlainMiddle;
-  const scrollBeforePan = viewport.scrollLeft;
-  for (const type of ["mousedown", "mousemove", "mouseup"]) {
-    upper.dispatchEvent(
-      new MouseEvent(type, {
-        bubbles: true,
-        cancelable: true,
-        button: 1,
-        buttons: type === "mouseup" ? 0 : 4,
-        ctrlKey: true,
-        clientX: rect.left + (type === "mousemove" ? 60 : 160),
-        clientY: rect.top + (type === "mousemove" ? 40 : 80),
-      }),
-    );
-  }
+  const plainMiddleDoesNotPan = JSON.stringify(canvas.getPanOffset()) === JSON.stringify(noPan);
+  drag(0, 1, true);
   await frames();
-  const middleDragPansViewport = viewport.scrollLeft > scrollBeforePan;
+  const spaceDragPansLabel = canvas.getPanOffset().x !== noPan.x || canvas.getPanOffset().y !== noPan.y;
   viewport.style.maxWidth = "";
   document.querySelector<HTMLButtonElement>('[data-action="fit-zoom"]')!.click();
   await frames();
   const fitButtonShowsWholeLabel =
-    viewport.scrollWidth <= viewport.clientWidth + 2 && viewport.scrollHeight <= viewport.clientHeight + 2;
+    labelFitsViewport() && canvas.getPanOffset().x === 0 && canvas.getPanOffset().y === 0;
   viewport.style.maxWidth = "500px";
   await frames();
-  const fitTracksViewportResize =
-    viewport.scrollWidth <= viewport.clientWidth + 2 && viewport.scrollHeight <= viewport.clientHeight + 2;
+  const fitTracksViewportResize = labelFitsViewport();
   viewport.style.maxWidth = "";
   viewport.style.height = "240px";
   await frames();
-  const fitTracksViewportHeightResize =
-    viewport.scrollWidth <= viewport.clientWidth + 2 && viewport.scrollHeight <= viewport.clientHeight + 2;
+  const fitTracksViewportHeightResize = labelFitsViewport();
   viewport.style.height = "";
+  document.querySelector<HTMLButtonElement>('[data-action="fit-zoom"]')!.click();
+  await frames();
+  const fittedPanBefore = canvas.getPanOffset();
+  drag(0, 1, true);
+  await frames();
+  const fittedLabelCanBePanned =
+    canvas.getPanOffset().x !== fittedPanBefore.x || canvas.getPanOffset().y !== fittedPanBefore.y;
   document.querySelector<HTMLButtonElement>('[data-action="fit-zoom"]')!.click();
   await frames();
   const font = document.querySelector<HTMLInputElement>('.studio-formatting [aria-label="Font family"]')!;
@@ -133,7 +117,8 @@ export async function runDisplaySmoke(canvas: CustomCanvas) {
     initialZoomFitsWholeLabel,
     clippedViewIsIndicated,
     plainMiddleDoesNotPan,
-    middleDragPansViewport,
+    spaceDragPansLabel,
+    fittedLabelCanBePanned,
     fitButtonShowsWholeLabel,
     fitTracksViewportResize,
     fitTracksViewportHeightResize,

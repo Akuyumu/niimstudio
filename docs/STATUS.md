@@ -35,9 +35,10 @@
   explicitly switches only after a native, opaque pending selection is consumed.
   No arbitrary device path is accepted from JavaScript.
 - The label can be panned inside the large bordered stage when zoomed; no extra
-  dotted viewport border is shown. A “Zoomed in: scroll to see the full label”
-  caption appears when content extends beyond the stage. Ctrl+middle-drag pans,
-  avoiding the desktop middle-click paste gesture.
+  dotted viewport border is shown. A “Zoomed in: Space+drag to see the full label”
+  caption appears when content extends beyond the stage. Space+left-drag pans
+  without using middle-click, and a fully visible label can move within the empty
+  stage space. Fit recenters it.
 
 ## v0.2.0 release review
 

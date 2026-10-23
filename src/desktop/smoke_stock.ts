@@ -206,9 +206,10 @@ export async function runStockSmoke(context: {
     context.exportLabel().label.size.width === 560 &&
     context.exportLabel().label.size.height === 354;
   const stockViewport = document.querySelector<HTMLElement>(".canvas-viewport")!;
-  const fiftyMmRollFitsWholeView =
-    stockViewport.scrollWidth <= stockViewport.clientWidth + 2 &&
-    stockViewport.scrollHeight <= stockViewport.clientHeight + 2;
+  const stockLabel = stockViewport.querySelector<HTMLElement>(".canvas-wrapper")!;
+  const stockArea = stockViewport.getBoundingClientRect();
+  const stockShown = stockLabel.getBoundingClientRect();
+  const fiftyMmRollFitsWholeView = stockShown.width <= stockArea.width + 2 && stockShown.height <= stockArea.height + 2;
   await nativeRequest("testSnapshot", { name: "stock-fit-zoom" });
   context.openPreview();
   await settle();

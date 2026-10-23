@@ -7,9 +7,10 @@
   print job disables it. Automatic retry exhaustion is reported with a clear action.
 - The editor starts at a computed fit zoom instead of a hardcoded 200%, so the whole
   label and its true aspect ratio are visible. The zoom control now returns to Fit.
-- When zoomed in, a “scroll to see the full label” note distinguishes a cropped view
-  from an incorrectly sized label. The large bordered stage is the pan/scroll area;
-  Ctrl+middle-drag pans without triggering the system middle-click paste gesture.
+- When zoomed in, a “Space+drag to see the full label” note distinguishes a cropped
+  view from an incorrectly sized label. The large bordered stage is the pan area;
+  Space+left-drag pans without using middle-click. Even a fully visible label can
+  move within the empty stage space; Fit recenters it.
 - Opening Devices while connected keeps the current link active. Closing the chooser
   changes nothing; selecting another device switches only after that explicit choice.
 

@@ -201,9 +201,10 @@
   };
 
   const updateClipState = () => {
-    if (!canvasViewport) return;
-    clippedX = canvasViewport.scrollWidth > canvasViewport.clientWidth + 1;
-    clippedY = canvasViewport.scrollHeight > canvasViewport.clientHeight + 1;
+    if (!canvasViewport || !fabricCanvas) return;
+    const scale = fabricCanvas.getVirtualZoom();
+    clippedX = fabricCanvas.getWidth() * scale + 2 > canvasViewport.clientWidth + 2;
+    clippedY = fabricCanvas.getHeight() * scale + 2 > canvasViewport.clientHeight + 2;
   };
 
   const fitCanvasToViewport = () => {
@@ -219,8 +220,7 @@
       const zoom = fitZoom(fabricCanvas.getWidth(), fabricCanvas.getHeight(), availableWidth, availableHeight);
       if (zoom === undefined) return;
       fabricCanvas.virtualZoom(zoom, "api");
-      canvasViewport.scrollLeft = Math.max(0, (canvasViewport.scrollWidth - canvasViewport.clientWidth) / 2);
-      canvasViewport.scrollTop = Math.max(0, (canvasViewport.scrollHeight - canvasViewport.clientHeight) / 2);
+      fabricCanvas.resetPan();
       updateClipState();
     });
   };
@@ -746,7 +746,7 @@
 <div class="image-editor">
   <div class="row mb-3 studio-stage">
     <div class="col d-flex justify-content-center">
-      <div class="canvas-viewport" bind:this={canvasViewport} onscroll={updateClipState}>
+      <div class="canvas-viewport" bind:this={canvasViewport}>
         <div
           class="canvas-wrapper print-start-{labelProps.printDirection} label-shape-{labelProps.shape ?? 'rect'}"
           style:--label-preview-radius={`${Number.parseFloat(zoomText) / 10}px`}>
@@ -754,9 +754,9 @@
         </div>
       </div>
       {#if isNative}<div class="studio-canvas-caption">
-          {labelProps.size.width} × {labelProps.size.height} px · Ctrl + scroll to zoom · Ctrl+middle-drag to pan · {draftState}
+          {labelProps.size.width} × {labelProps.size.height} px · Ctrl + scroll to zoom · Space + drag to pan · {draftState}
           {#if clippedX || clippedY}<span class="studio-canvas-clip-note">
-              · Zoomed in: scroll to see the full label</span
+              · Zoomed in: Space+drag to see the full label</span
             >{/if}
         </div>{/if}
     </div>
@@ -960,21 +960,25 @@
 
 <style>
   .canvas-viewport {
-    display: flex;
+    position: relative;
+    display: block;
     flex: none;
     width: 100%;
     height: max(200px, calc(100dvh - 420px));
     min-height: 0;
-    overflow: auto;
+    overflow: hidden;
     line-height: 0;
   }
   .canvas-wrapper {
-    margin: auto;
+    position: absolute;
+    top: 50%;
+    left: 50%;
     display: block;
     width: max-content;
     flex: none;
     border: 1px solid rgba(0, 0, 0, 0.4);
     background-color: rgba(60, 55, 63, 0.5);
+    transform: translate(calc(-50% + var(--canvas-pan-x, 0px)), calc(-50% + var(--canvas-pan-y, 0px)));
   }
   .studio-canvas-clip-note {
     color: var(--studio-accent);

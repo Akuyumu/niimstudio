@@ -32,8 +32,8 @@ export class CustomCanvas extends fabric.Canvas {
   onZoomChange?: (zoom: number, source: "api" | "user") => void;
   private panning = false;
   private panLast = { x: 0, y: 0 };
-  private panSelection = true;
-  private panSkipTargetFind = false;
+  private panOffset = { x: 0, y: 0 };
+  private spacePressed = false;
 
   constructor(el?: string | HTMLCanvasElement, options?: fabric.TOptions<fabric.CanvasOptions>) {
     super(el, options);
@@ -42,25 +42,24 @@ export class CustomCanvas extends fabric.Canvas {
   }
 
   private setupZoomAndPan() {
-    this.on("mouse:down", (opt) => {
-      const event = opt.e as MouseEvent;
-      if (event.button !== 1 || !event.ctrlKey) return;
-      const viewport = this.getViewport();
-      if (!viewport) return;
-      event.preventDefault();
-      this.panning = true;
-      this.panSelection = this.selection;
-      this.panSkipTargetFind = this.skipTargetFind;
-      this.selection = false;
-      this.skipTargetFind = true;
-      this.panLast = { x: event.clientX, y: event.clientY };
-      viewport.style.cursor = "grabbing";
-    });
-
-    this.on("mouse:move", (opt) => {
+    const viewport = this.getViewport();
+    if (viewport) {
+      viewport.addEventListener(
+        "mousedown",
+        (event) => {
+          if (event.button !== 0 || !this.spacePressed) return;
+          event.preventDefault();
+          event.stopPropagation();
+          this.panning = true;
+          this.panLast = { x: event.clientX, y: event.clientY };
+          viewport.style.cursor = "grabbing";
+        },
+        true,
+      );
+    }
+    window.addEventListener("mousemove", (event) => {
       if (!this.panning) return;
-      const event = opt.e as MouseEvent;
-      if ((event.buttons & 4) === 0) {
+      if ((event.buttons & 1) === 0) {
         this.stopPanning();
         return;
       }
@@ -68,15 +67,27 @@ export class CustomCanvas extends fabric.Canvas {
       this.panBy(this.panLast.x - event.clientX, this.panLast.y - event.clientY);
       this.panLast = { x: event.clientX, y: event.clientY };
     });
+    window.addEventListener("mouseup", (event) => {
+      if (event.button === 0) this.stopPanning();
+    });
 
-    this.on("mouse:up", () => this.stopPanning());
-
-    // WebKit/Linux can otherwise treat middle-click as primary-selection paste.
-    const suppressMiddlePaste = (event: MouseEvent) => {
-      if (event.button === 1 && event.ctrlKey) event.preventDefault();
+    const isTypingTarget = (target: EventTarget | null) =>
+      target instanceof HTMLElement &&
+      (!!target.closest("input, textarea, select, [contenteditable='true']") ||
+        !!(this.getActiveObject() as { isEditing?: boolean } | undefined)?.isEditing);
+    const setSpace = (event: KeyboardEvent, pressed: boolean) => {
+      if (event.code !== "Space" || isTypingTarget(event.target)) return;
+      event.preventDefault();
+      this.spacePressed = pressed;
+      if (viewport) viewport.style.cursor = pressed && !this.panning ? "grab" : this.panning ? "grabbing" : "";
+      if (!pressed) this.stopPanning();
     };
-    this.upperCanvasEl.addEventListener("mousedown", suppressMiddlePaste);
-    this.upperCanvasEl.addEventListener("auxclick", suppressMiddlePaste);
+    window.addEventListener("keydown", (event) => !event.repeat && setSpace(event, true));
+    window.addEventListener("keyup", (event) => setSpace(event, false));
+    window.addEventListener("blur", () => {
+      this.spacePressed = false;
+      this.stopPanning();
+    });
 
     this.on("mouse:wheel", (opt) => {
       const event = opt.e as WheelEvent;
@@ -154,8 +165,7 @@ export class CustomCanvas extends fabric.Canvas {
 
           const wrapper = this.getViewport();
           if (wrapper) {
-            wrapper.scrollLeft -= dx;
-            wrapper.scrollTop -= dy;
+            this.panBy(dx, dy);
           }
           lastMidPoint = currentMidPoint;
         }
@@ -182,17 +192,32 @@ export class CustomCanvas extends fabric.Canvas {
   private stopPanning() {
     if (!this.panning) return;
     this.panning = false;
-    this.selection = this.panSelection;
-    this.skipTargetFind = this.panSkipTargetFind;
     const viewport = this.getViewport();
-    if (viewport) viewport.style.cursor = "";
+    if (viewport) viewport.style.cursor = this.spacePressed ? "grab" : "";
   }
 
   public panBy(dx: number, dy: number) {
     const viewport = this.getViewport();
-    if (!viewport) return;
-    viewport.scrollLeft += dx;
-    viewport.scrollTop += dy;
+    const wrapper = this.getElement().closest(".canvas-wrapper") as HTMLElement | null;
+    if (!viewport || !wrapper) return;
+    const scale = this.virtualZoomRatio;
+    const maxX = Math.abs(viewport.clientWidth - (this.getWidth() * scale + 2)) / 2;
+    const maxY = Math.abs(viewport.clientHeight - (this.getHeight() * scale + 2)) / 2;
+    this.panOffset.x = Math.min(maxX, Math.max(-maxX, this.panOffset.x + dx));
+    this.panOffset.y = Math.min(maxY, Math.max(-maxY, this.panOffset.y + dy));
+    wrapper.style.setProperty("--canvas-pan-x", `${this.panOffset.x}px`);
+    wrapper.style.setProperty("--canvas-pan-y", `${this.panOffset.y}px`);
+  }
+
+  public resetPan() {
+    this.panOffset = { x: 0, y: 0 };
+    const wrapper = this.getElement().closest(".canvas-wrapper") as HTMLElement | null;
+    wrapper?.style.setProperty("--canvas-pan-x", "0px");
+    wrapper?.style.setProperty("--canvas-pan-y", "0px");
+  }
+
+  public getPanOffset() {
+    return { ...this.panOffset };
   }
 
   public virtualZoom(newZoom: number, source: "api" | "user" = "api") {
@@ -211,6 +236,13 @@ export class CustomCanvas extends fabric.Canvas {
     if (this.onZoomChange) {
       this.onZoomChange(this.virtualZoomRatio, source);
     }
+    this.clampPan();
+  }
+
+  private clampPan() {
+    const viewport = this.getViewport();
+    if (!viewport) return;
+    this.panBy(0, 0);
   }
 
   override getRetinaScaling() {
