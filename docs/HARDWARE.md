@@ -57,6 +57,10 @@ excludes its gap. Pixel/mm consistency, printhead width, finite positive sizes,
 and protocol byte alignment are checked before use. DPI comes from capabilities
 when available, otherwise the known model profile; feed direction comes from that
 profile. Recognized media type also sets gaps/black-mark handling in Preview.
+B1, B21 and B21S models document physical label widths up to 50 mm even though
+their 203-DPI printable head covers about 48 mm. NiimStudio therefore treats the
+physical stock range separately from the printable raster, allowing 50×30 mm stock
+while showing non-printable edge margins. This is not a SKU lookup or inferred size.
 **B1 Pro height correction:** its firmware-2.12 response reports 30 mm/354 px
 sticker height plus a separate 6 mm/70 px field. NiimBlueLib 0.47.0 incorrectly
 subtracted the latter unconditionally, yielding 24 mm/284 px. NiimStudio backports

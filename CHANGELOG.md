@@ -1,3 +1,9 @@
+# Unreleased
+
+- Treat the documented 20–50 mm media range on B21/B21S models separately from
+  their 384-pixel printable head. This restores the 50×30 mm picker preset and allows
+  a reported 50 mm roll to auto-detect with a 48 mm printable canvas.
+
 # NiimStudio 0.3.0
 
 Stable release. Includes the printer and stock work from v0.2.0, plus the reconnect,

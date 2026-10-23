@@ -13,6 +13,16 @@
   can pin a release tag in a separate checkout. v0.2.0-rc.1 and v0.3.0 were validated
   through the same package gates before stable publication.
 
+## After v0.3.0 (unreleased)
+
+- B21S uses a 384-pixel/203-DPI printable head but documents 20–50 mm label widths.
+  The media picker had treated printable width as physical width, hiding 50×30 mm
+  stock, and auto-detection rejected a reported 50 mm roll for the same reason.
+- Documented media bounds for B1/B21/B21S now allow 50 mm stock while capping the
+  printable raster at 48 mm and labelling the edge margins. This is device metadata,
+  not a guessed SKU size. B21S still needs user confirmation that auto-detection
+  succeeds with the actual printer reply.
+
 ## v0.3.0
 
 - Automatic reconnect is capped at five attempts with 2/5/10/30-second gaps
@@ -212,7 +222,7 @@
 - Ubuntu CI exercises the actual installed native app and real Flatpak GUI on
   x86-64 and ARM64. Exported Flatpak bundles are installed/reinstalled with a
   retained-data fixture before publishing, not merely built as manifests.
-- 47 Node tests: settings/read-back, media reads, saved-roll identity, fit/clip zoom,
+- 48 Node tests: settings/read-back, media reads, saved-roll identity, fit/clip zoom,
   connection
   troubleshooting tips, CSV safety, print validation, undo, reconnect, every printable
   Code 128 character, EAN-13, cancellation, media validation, head-width/rotation

@@ -76,6 +76,17 @@ export const stockSizes = [
 
 export const offlineProfile: PrinterProfile = { dpi: 203, dpmm: 8, printDirection: "left", printheadPixels: 0 };
 
+// Physical media range is not the printable head width. These documented 2-inch
+// models accept 50 mm rolls even though their 203-DPI head prints about 48 mm.
+// Sources: NIIMBOT B1/B21/B21S product specifications and B21S 50×30 starter stock.
+const DOCUMENTED_MEDIA_BOUNDS = {
+  [PrinterModel.B1_PRO]: { minWidth: 20, maxWidth: 50, minHeight: 8, maxHeight: 350 },
+  [PrinterModel.B1]: { minWidth: 20, maxWidth: 50, minHeight: 8, maxHeight: 350 },
+  [PrinterModel.B21]: { minWidth: 20, maxWidth: 50, minHeight: 8, maxHeight: 350 },
+  [PrinterModel.B21S]: { minWidth: 20, maxWidth: 50, minHeight: 8, maxHeight: 350 },
+  [PrinterModel.B21S_C2B]: { minWidth: 20, maxWidth: 50, minHeight: 8, maxHeight: 350 },
+} as const;
+
 export function printerProfile(
   meta?: PrinterModelMeta,
   info?: Pick<PrinterInfo, "capabilities" | "printheadWidth">,
@@ -90,17 +101,15 @@ export function printerProfile(
       ? reportedHead!
       : meta.printheadPixels;
   if (![203, 300, 600].includes(dpi)) return;
+  const mediaBounds = DOCUMENTED_MEDIA_BOUNDS[meta.model as keyof typeof DOCUMENTED_MEDIA_BOUNDS];
   return {
     dpi,
     dpmm: dpi === 203 ? 8 : dpi / 25.4,
     printDirection: meta.printDirection,
     printheadPixels,
-    // Physical media != printable raster width. Keep NiimBlueLib's conservative
-    // head limit; B1 Pro's documented stock range includes 50 mm rolls.
-    // Source: https://niimbotusa.com/printers/b1-pro (specifications).
-    ...(meta.model === PrinterModel.B1_PRO
-      ? { mediaBounds: { minWidth: 20, maxWidth: 50, minHeight: 8, maxHeight: 350 } }
-      : {}),
+    // Keep NiimBlueLib's conservative printable-head limit; use documented
+    // physical-stock bounds separately so 50 mm rolls are not misclassified.
+    ...(mediaBounds ? { mediaBounds } : {}),
   };
 }
 

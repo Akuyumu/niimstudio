@@ -119,6 +119,24 @@ test("reported 50 mm B1 Pro roll retains physical size with a bounded printable 
   assert.equal(detected.printableAreaLimited, true);
 });
 
+test("B21S accepts documented 50 mm rolls despite its 48 mm printable head", () => {
+  const b21s = printerProfile(getPrinterMetaByModel(PrinterModel.B21S))!;
+  assert.equal(b21s.dpi, 203);
+  assert.equal(b21s.printheadPixels, 384);
+  const choices = availableStockPresets(b21s);
+  assert.ok(choices.some((stock) => stock.id === "50x30"));
+  assert.ok(choices.some((stock) => stock.id === "50x50"));
+  assert.ok(!choices.some((stock) => stock.id === "60x40"));
+  const preset = stockFromSize({ widthMm: 50, heightMm: 30, shape: "rounded_rect" }, b21s)!;
+  assert.deepEqual(preset.size, { width: 384, height: 240 });
+  assert.equal(preset.printableAreaLimited, true);
+  const detected = detectedStock({ ...paper, paperWidth: 50, paperWidthPixel: 400, paperHeightPixel: 240 }, b21s)!;
+  assert.equal(detected.widthMm, 50);
+  assert.equal(detected.heightMm, 30);
+  assert.deepEqual(detected.size, { width: 384, height: 240 });
+  assert.equal(detected.printableAreaLimited, true);
+});
+
 test("remembered roll keys require a reported product identity and ignore private serial/UUID", () => {
   const tag = {
     tagPresent: true,
