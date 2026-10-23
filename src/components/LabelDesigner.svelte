@@ -43,10 +43,13 @@
   import SelectionToolbar from "$/desktop/SelectionToolbar.svelte";
   import CodeEditor, { type CodeContent } from "$/desktop/CodeEditor.svelte";
   import StockSetup from "$/desktop/StockSetup.svelte";
+  import { fitZoom } from "$/desktop/zoom";
 
   let { saveTemplate }: { saveTemplate?: () => void } = $props();
 
   let htmlCanvas: HTMLCanvasElement;
+  let stageColumn = $state<HTMLElement>();
+  let canvasViewport = $state<HTMLElement>();
 
   let fabricCanvas = $state<CustomCanvas>();
   let labelProps = $state<LabelProps>(
@@ -61,6 +64,9 @@
   let windowWidth = $state<number>(0);
   let undoState = $state<UndoState>({ undoDisabled: false, redoDisabled: false });
   let zoomText = $state<string>("100%");
+  let zoomMode = $state<"fit" | "manual">(isNative ? "fit" : "manual");
+  let clippedX = $state(false);
+  let clippedY = $state(false);
   let draftTimer: ReturnType<typeof setTimeout> | undefined;
   let draftReady = $state(false);
   let starterCanvas: string | undefined;
@@ -194,10 +200,47 @@
     }
   };
 
+  const updateClipState = () => {
+    if (!canvasViewport) return;
+    clippedX = canvasViewport.scrollWidth > canvasViewport.clientWidth + 1;
+    clippedY = canvasViewport.scrollHeight > canvasViewport.clientHeight + 1;
+  };
+
+  const fitCanvasToViewport = () => {
+    if (!isNative || !fabricCanvas || !stageColumn || !canvasViewport) return;
+    zoomMode = "fit";
+    requestAnimationFrame(() => {
+      if (!fabricCanvas || !stageColumn || !canvasViewport) return;
+      const style = getComputedStyle(stageColumn);
+      const availableWidth = Math.max(
+        1,
+        stageColumn.clientWidth -
+          Number.parseFloat(style.paddingLeft || "0") -
+          Number.parseFloat(style.paddingRight || "0") -
+          6,
+      );
+      const maxHeight = Number.parseFloat(getComputedStyle(canvasViewport).maxHeight);
+      const availableHeight = Math.max(1, (Number.isFinite(maxHeight) ? maxHeight : window.innerHeight * 0.54) - 6);
+      const zoom = fitZoom(fabricCanvas.getWidth(), fabricCanvas.getHeight(), availableWidth, availableHeight);
+      if (zoom === undefined) return;
+      fabricCanvas.virtualZoom(zoom, "api");
+      canvasViewport.scrollLeft = Math.max(0, (canvasViewport.scrollWidth - canvasViewport.clientWidth) / 2);
+      canvasViewport.scrollTop = Math.max(0, (canvasViewport.scrollHeight - canvasViewport.clientHeight) / 2);
+      updateClipState();
+    });
+  };
+
   const onUpdateLabelProps = (newProps: LabelProps) => {
+    const sizeChanged =
+      labelProps.size.width !== newProps.size.width || labelProps.size.height !== newProps.size.height;
     labelProps = newProps;
     fabricCanvas!.setDimensions(labelProps.size);
-    fabricCanvas!.virtualZoom(fabricCanvas!.getVirtualZoom());
+    if (isNative && sizeChanged) {
+      zoomMode = "fit";
+      requestAnimationFrame(fitCanvasToViewport);
+    } else {
+      fabricCanvas!.virtualZoom(fabricCanvas!.getVirtualZoom());
+    }
     try {
       LocalStoragePersistence.saveLastLabelProps(labelProps);
       undo.push(fabricCanvas!, labelProps);
@@ -445,8 +488,10 @@
       height: labelProps.size.height,
     });
     fabricCanvas.setLabelProps(labelProps);
-    fabricCanvas.onZoomChange = (z) => {
+    fabricCanvas.onZoomChange = (z, source) => {
       zoomText = Math.round(z * 100) + "%";
+      if (source === "user") zoomMode = "manual";
+      requestAnimationFrame(updateClipState);
     };
     fabricCanvas.setGridEnabled(!!$appConfig.gridEnabled);
 
@@ -476,7 +521,7 @@
         console.warn("Could not store stock-preview preference", error);
       }
     }
-    if (isNative) fabricCanvas.virtualZoom(2);
+    if (isNative) fitCanvasToViewport();
     draftReady = true;
     if (isNative) window.__niimstudioPrepareClose = saveDraft;
     window.addEventListener("beforeunload", saveDraft);
@@ -687,20 +732,35 @@
       renderOnFontsChanged();
     }
   });
+
+  $effect(() => {
+    const width = windowWidth;
+    const size = `${labelProps.size.width}x${labelProps.size.height}`;
+    if (!isNative || !draftReady || zoomMode !== "fit" || !width || !size) return;
+    requestAnimationFrame(fitCanvasToViewport);
+  });
 </script>
 
 <svelte:window bind:innerWidth={windowWidth} onkeydown={onKeyDown} onpaste={onPaste} />
 
 <div class="image-editor">
   <div class="row mb-3 studio-stage">
-    <div class="col d-flex justify-content-center">
+    <div class="col d-flex justify-content-center" bind:this={stageColumn}>
       <div
-        class="canvas-wrapper print-start-{labelProps.printDirection} label-shape-{labelProps.shape ?? 'rect'}"
-        style:--label-preview-radius={`${Number.parseFloat(zoomText) / 10}px`}>
-        <canvas bind:this={htmlCanvas}></canvas>
+        class="canvas-viewport {clippedX ? 'is-clipped-x' : ''} {clippedY ? 'is-clipped-y' : ''}"
+        bind:this={canvasViewport}
+        onscroll={updateClipState}>
+        <div
+          class="canvas-wrapper print-start-{labelProps.printDirection} label-shape-{labelProps.shape ?? 'rect'}"
+          style:--label-preview-radius={`${Number.parseFloat(zoomText) / 10}px`}>
+          <canvas bind:this={htmlCanvas}></canvas>
+        </div>
       </div>
       {#if isNative}<div class="studio-canvas-caption">
-          {labelProps.size.width} × {labelProps.size.height} px · Ctrl + scroll to zoom · {draftState}
+          {labelProps.size.width} × {labelProps.size.height} px · Ctrl + scroll to zoom · middle-drag to pan · {draftState}
+          {#if clippedX || clippedY}<span class="studio-canvas-clip-note">
+              · Zoomed in: scroll to see the full label</span
+            >{/if}
         </div>{/if}
     </div>
   </div>
@@ -760,7 +820,12 @@
           <MdIcon icon="grid_on" />
         </button>
 
-        <button class="btn btn-sm btn-secondary" onclick={() => fabricCanvas?.resetVirtualZoom()} title="Reset zoom">
+        <button
+          class="btn btn-sm btn-secondary"
+          data-action="fit-zoom"
+          onclick={fitCanvasToViewport}
+          title="Fit the whole label in the viewing area">
+          <MdIcon icon="fit_screen" />
           {zoomText}
         </button>
 
@@ -897,12 +962,26 @@
 </div>
 
 <style>
-  .canvas-wrapper {
-    border: 1px solid rgba(0, 0, 0, 0.4);
-    background-color: rgba(60, 55, 63, 0.5);
+  .canvas-viewport {
+    width: fit-content;
     max-width: 100%;
     max-height: 70vh;
     overflow: auto;
+    line-height: 0;
+  }
+  .canvas-viewport.is-clipped-x,
+  .canvas-viewport.is-clipped-y {
+    outline: 1px dashed color-mix(in srgb, var(--studio-accent) 60%, transparent);
+    outline-offset: 4px;
+  }
+  .canvas-wrapper {
+    display: block;
+    width: max-content;
+    border: 1px solid rgba(0, 0, 0, 0.4);
+    background-color: rgba(60, 55, 63, 0.5);
+  }
+  .studio-canvas-clip-note {
+    color: var(--studio-accent);
   }
   .canvas-wrapper.print-start-left {
     border-left: 2px solid #ff4646;

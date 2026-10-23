@@ -68,6 +68,7 @@ def validate_message(message):
         "quit",
         "testUpdate",
         "connect",
+        "cancelConnect",
         "disconnect",
         "write",
         "save",
@@ -105,6 +106,7 @@ class StudioApplication(Adw.Application):
         self.bluez = None
         self.transport = None
         self.connecting = False
+        self.connect_request = None
         self.generation = 0
         self.shutting_down = False
         self.editor_ready = False
@@ -423,6 +425,8 @@ class StudioApplication(Adw.Application):
                 self.send({"event": "update", "version": "9.9.9", "tag": "v9.9.9"})
             elif operation == "connect":
                 self.choose_printer(request_id, automatic=request.get("automatic") is True)
+            elif operation == "cancelConnect":
+                self.cancel_connection(request_id)
             elif operation == "knownDevice":
                 self.reply(request_id, self.history.info())
             elif operation == "setReconnectPolicy":
@@ -487,10 +491,13 @@ class StudioApplication(Adw.Application):
             self.reply(request_id, error="A printer connection is already active or in progress")
             return
         self.connecting = True
+        self.connect_request = request_id
 
         def canceled():
             self.connecting = False
             self.chooser = None
+            if self.connect_request == request_id:
+                self.connect_request = None
             self.generation += 1
             transport, self.transport = self.transport, None
             if transport:
@@ -498,7 +505,10 @@ class StudioApplication(Adw.Application):
             self.reply(request_id, cancelled=True)
 
         def selected(device):
+            if self.connect_request != request_id:
+                return
             if self.smoke:
+                self.connect_request = None
                 self.reply(request_id, error="Hardware access is disabled in smoke tests")
                 self.connecting = False
                 return
@@ -531,6 +541,8 @@ class StudioApplication(Adw.Application):
                 if generation != self.generation:
                     return
                 self.connecting = False
+                if self.connect_request == request_id:
+                    self.connect_request = None
                 if self.chooser:
                     self.chooser.connection_succeeded()
                     self.chooser = None
@@ -549,6 +561,8 @@ class StudioApplication(Adw.Application):
                 if self.chooser and not self.chooser.closed:
                     self.chooser.connection_failed(error, device["kind"])
                 else:
+                    if self.connect_request == request_id:
+                        self.connect_request = None
                     self.reply(request_id, error=error)
 
             self.run_task(lambda: transport.open(device["id"]), opened, failed)
@@ -564,6 +578,9 @@ class StudioApplication(Adw.Application):
                 return self.history.resolve_last(discover_serial(), objects)
 
             def unavailable(error):
+                if self.connect_request != request_id:
+                    return
+                self.connect_request = None
                 self.connecting = False
                 self.reply(request_id, error=error)
 
@@ -585,6 +602,21 @@ class StudioApplication(Adw.Application):
                 hardware_enabled=not self.smoke,
             )
             self.chooser.present()
+
+    def cancel_connection(self, request_id):
+        """Cancel a pending automatic connection so Devices can be opened."""
+        if not self.connecting or self.chooser is not None:
+            self.reply(request_id, {"cancelled": False})
+            return
+        pending, self.connect_request = self.connect_request, None
+        self.connecting = False
+        self.generation += 1
+        transport, self.transport = self.transport, None
+        if transport:
+            self.run_task(transport.close)
+        if pending is not None:
+            self.reply(pending, cancelled=True)
+        self.reply(request_id, {"cancelled": True})
 
     def transport_event(self, generation, event):
         if generation == self.generation and self.transport and not self.shutting_down:
@@ -802,8 +834,11 @@ class StudioApplication(Adw.Application):
             "settings-failure",
             "settings-unavailable",
             "crisp-text",
+            "auto-connect",
+            "zoom-clipped",
             "print-advanced",
             "stock-compatible",
+            "stock-fit-zoom",
             "stock-override",
             "stock-height-corrected",
             "stock-printable-area",

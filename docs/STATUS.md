@@ -13,6 +13,28 @@
   can pin a release tag in a separate checkout. v0.2.0-rc.1 was validated first;
   the accepted source was then promoted to stable v0.2.0.
 
+## After v0.2.0 (unreleased)
+
+- Automatic reconnect is now capped at five attempts with 2/5/10/30-second gaps
+  instead of retrying indefinitely. Recent system Bluetooth logs showed repeated
+  link attempts after launch while the Devices button was disabled.
+- The header now shows `Auto-connecting…` or `Retrying in Ns` with an explicit
+  **Cancel** action during automatic reconnects. Either Cancel or Devices stops the
+  pending attempt and opens the chooser, so another printer can be selected.
+- Devices stays enabled during automatic attempts; it is disabled only while a print
+  job is active. The native `cancelConnect` operation invalidates queued callbacks,
+  closes only the pending transport, and replies to both pending requests safely.
+- After the fifth failure, a persistent error explains that automatic reconnect
+  stopped and offers Open Devices / retry. These changes are on `dev`, not in the
+  published v0.2.0 assets.
+- The editor now opens at a computed fit zoom (capped at 200%) rather than a fixed
+  200%. Window/label-size changes refit only while Fit mode remains active; manual
+  zoom stays manual. The zoom control returns to Fit and uses a fitting icon.
+- The label sits inside a separate scrollable viewport. When content extends beyond
+  it, a dashed viewing edge and “scroll to see the full label” caption appear, so a
+  cropped view cannot be mistaken for altered label proportions. Middle-button drag
+  pans the zoomed viewport; the caption documents the gesture.
+
 ## v0.2.0 release review
 
 - The user confirms Bluetooth now connects in the application. Pair is no longer
@@ -98,7 +120,8 @@
   replace an explicitly chosen physical size, even on a blank canvas.
 - Native preview shows Copies and Print; technical controls are collapsed under
   Advanced with plain-language hover descriptions. Protocol selection is automatic.
-  Header Devices uses a compact printer icon; reconnect countdowns are tooltip-only.
+  Header Devices uses a compact printer icon; automatic reconnect now has a visible
+  status/cancel control and stops after five attempts.
 - Zoom redraws the canvas at display resolution rather than enlarging its bitmap;
   tests verify pointer alignment and byte-identical unzoomed export pixels. The
   font picker grows with the formatting bar, instead of clipping the font name.
@@ -174,7 +197,7 @@
 
 ## Automated verification
 
-- 104 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
+- 107 Python tests: real pseudoterminal USB round trips/disconnects; mocked BlueZ
   fragmentation, service discovery, notifications, and cleanup; mocked pairing
   agents/prompts; palette safety/GTK compositing, bridge validation, and device history.
 - Installer tests cover checksum failure, traversal/links, update rollback,
@@ -184,7 +207,8 @@
 - Ubuntu CI exercises the actual installed native app and real Flatpak GUI on
   x86-64 and ARM64. Exported Flatpak bundles are installed/reinstalled with a
   retained-data fixture before publishing, not merely built as manifests.
-- 45 Node tests: settings/read-back, media reads, saved-roll identity, connection
+- 47 Node tests: settings/read-back, media reads, saved-roll identity, fit/clip zoom,
+  connection
   troubleshooting tips, CSV safety, print validation, undo, reconnect, every printable
   Code 128 character, EAN-13, cancellation, media validation, head-width/rotation
   mapping, resolution priority, and safe preset conversion.

@@ -275,9 +275,11 @@
     flex-direction: column;
     gap: 24px;
   }
+  .studio-stage .canvas-viewport {
+    max-height: 54vh;
+  }
   .studio-stage .canvas-wrapper {
     box-shadow: var(--studio-paper-shadow);
-    max-height: 54vh;
   }
   .studio-stage .canvas-wrapper.label-shape-rounded_rect {
     border-radius: var(--label-preview-radius, 20px);

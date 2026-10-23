@@ -28,6 +28,7 @@ class BridgeSecurityTests(unittest.TestCase):
 
     def test_bridge_only_has_documented_operations(self):
         self.assertEqual(validate_message({"id": 1, "op": "connect"})["op"], "connect")
+        self.assertEqual(validate_message({"id": 1, "op": "cancelConnect"})["op"], "cancelConnect")
         for message in [{"id": True, "op": "write"}, {"id": 0, "op": "connect"}, {"id": 2, "op": "exec"}, [], None]:
             with self.subTest(message=message), self.assertRaises(ValueError):
                 validate_message(message)

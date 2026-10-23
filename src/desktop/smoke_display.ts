@@ -4,6 +4,12 @@ import type { CustomCanvas } from "$/fabric-object/custom_canvas";
 import { nativeRequest } from "$/desktop/bridge";
 
 export async function runDisplaySmoke(canvas: CustomCanvas) {
+  const frames = () =>
+    new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  await frames();
+  const viewport = document.querySelector<HTMLElement>(".canvas-viewport")!;
+  const initialZoomFitsWholeLabel =
+    viewport.scrollWidth <= viewport.clientWidth + 2 && viewport.scrollHeight <= viewport.clientHeight + 2;
   const zoom = canvas.getVirtualZoom();
   const width = canvas.getWidth(),
     height = canvas.getHeight();
@@ -35,6 +41,58 @@ export async function runDisplaySmoke(canvas: CustomCanvas) {
     originalPixels.every((value, index) => value === newPixels[index]);
   const zoomKeepsDocumentGeometry =
     canvas.getWidth() === width && canvas.getHeight() === height && JSON.stringify(canvas.toObject()) === objects;
+  viewport.style.maxWidth = "420px";
+  canvas.virtualZoom(4, "user");
+  canvas.renderAll();
+  viewport.dispatchEvent(new Event("scroll"));
+  await frames();
+  await tick();
+  const clippedViewIsIndicated =
+    (viewport.classList.contains("is-clipped-x") || viewport.classList.contains("is-clipped-y")) &&
+    document.querySelector(".studio-canvas-clip-note")?.textContent?.includes("scroll to see") === true;
+  await nativeRequest("testSnapshot", { name: "zoom-clipped" });
+  const upper = viewport.querySelector<HTMLCanvasElement>(".upper-canvas")!;
+  const rect = upper.getBoundingClientRect();
+  const scrollBeforePan = viewport.scrollLeft;
+  upper.dispatchEvent(
+    new MouseEvent("mousedown", {
+      bubbles: true,
+      cancelable: true,
+      button: 1,
+      buttons: 4,
+      clientX: rect.left + 160,
+      clientY: rect.top + 80,
+    }),
+  );
+  upper.dispatchEvent(
+    new MouseEvent("mousemove", {
+      bubbles: true,
+      cancelable: true,
+      button: 1,
+      buttons: 4,
+      clientX: rect.left + 60,
+      clientY: rect.top + 40,
+    }),
+  );
+  upper.dispatchEvent(
+    new MouseEvent("mouseup", {
+      bubbles: true,
+      cancelable: true,
+      button: 1,
+      clientX: rect.left + 60,
+      clientY: rect.top + 40,
+    }),
+  );
+  await frames();
+  const middleDragPansViewport = viewport.scrollLeft > scrollBeforePan;
+  viewport.style.maxWidth = "";
+  document.querySelector<HTMLButtonElement>('[data-action="fit-zoom"]')!.click();
+  await frames();
+  const fitButtonShowsWholeLabel =
+    !viewport.classList.contains("is-clipped-x") &&
+    !viewport.classList.contains("is-clipped-y") &&
+    viewport.scrollWidth <= viewport.clientWidth + 2 &&
+    viewport.scrollHeight <= viewport.clientHeight + 2;
   canvas.virtualZoom(zoom);
   canvas.renderAll();
   await tick();
@@ -52,6 +110,10 @@ export async function runDisplaySmoke(canvas: CustomCanvas) {
     zoomHitTestingAligned,
     zoomDoesNotChangePrintPixels,
     zoomKeepsDocumentGeometry,
+    initialZoomFitsWholeLabel,
+    clippedViewIsIndicated,
+    middleDragPansViewport,
+    fitButtonShowsWholeLabel,
     fontNameUsesAvailableSpace,
     headerButtonsAligned,
   };

@@ -205,6 +205,11 @@ export async function runStockSmoke(context: {
     get(confirmedStock)?.widthMm === 50 &&
     context.exportLabel().label.size.width === 560 &&
     context.exportLabel().label.size.height === 354;
+  const stockViewport = document.querySelector<HTMLElement>(".canvas-viewport")!;
+  const fiftyMmRollFitsWholeView =
+    stockViewport.scrollWidth <= stockViewport.clientWidth + 2 &&
+    stockViewport.scrollHeight <= stockViewport.clientHeight + 2;
+  await nativeRequest("testSnapshot", { name: "stock-fit-zoom" });
   context.openPreview();
   await settle();
   const printableMarginsExplained =
@@ -261,6 +266,7 @@ export async function runStockSmoke(context: {
     rememberedRollCanBeChanged,
     physicalStockFilterCorrect,
     fiftyMmRollSupported,
+    fiftyMmRollFitsWholeView,
     printableMarginsExplained,
     simplePrintPreview,
     advancedPrintControlsAvailable,

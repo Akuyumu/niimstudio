@@ -29,7 +29,11 @@ export class CustomCanvas extends fabric.Canvas {
   private highlightMirror: boolean = true;
   private gridEnabled: boolean = false;
   private virtualZoomRatio: number = 1;
-  onZoomChange?: (zoom: number) => void;
+  onZoomChange?: (zoom: number, source: "api" | "user") => void;
+  private panning = false;
+  private panLast = { x: 0, y: 0 };
+  private panSelection = true;
+  private panSkipTargetFind = false;
 
   constructor(el?: string | HTMLCanvasElement, options?: fabric.TOptions<fabric.CanvasOptions>) {
     super(el, options);
@@ -38,6 +42,35 @@ export class CustomCanvas extends fabric.Canvas {
   }
 
   private setupZoomAndPan() {
+    this.on("mouse:down", (opt) => {
+      const event = opt.e as MouseEvent;
+      if (event.button !== 1) return;
+      const viewport = this.getViewport();
+      if (!viewport) return;
+      event.preventDefault();
+      this.panning = true;
+      this.panSelection = this.selection;
+      this.panSkipTargetFind = this.skipTargetFind;
+      this.selection = false;
+      this.skipTargetFind = true;
+      this.panLast = { x: event.clientX, y: event.clientY };
+      viewport.style.cursor = "grabbing";
+    });
+
+    this.on("mouse:move", (opt) => {
+      if (!this.panning) return;
+      const event = opt.e as MouseEvent;
+      if ((event.buttons & 4) === 0) {
+        this.stopPanning();
+        return;
+      }
+      event.preventDefault();
+      this.panBy(this.panLast.x - event.clientX, this.panLast.y - event.clientY);
+      this.panLast = { x: event.clientX, y: event.clientY };
+    });
+
+    this.on("mouse:up", () => this.stopPanning());
+
     this.on("mouse:wheel", (opt) => {
       const event = opt.e as WheelEvent;
 
@@ -98,7 +131,7 @@ export class CustomCanvas extends fabric.Canvas {
             const newZoom = (currentPinchDistance / initialPinchDistance) * initialZoom;
             if (Math.abs(newZoom - this.virtualZoomRatio) > 0.02) {
               if (isFinite(newZoom) && newZoom > 0) {
-                this.virtualZoom(newZoom);
+                this.virtualZoom(newZoom, "user");
               }
             }
           }
@@ -112,7 +145,7 @@ export class CustomCanvas extends fabric.Canvas {
           const dx = currentMidPoint.x - lastMidPoint.x;
           const dy = currentMidPoint.y - lastMidPoint.y;
 
-          const wrapper = this.getElement().closest(".canvas-wrapper");
+          const wrapper = this.getViewport();
           if (wrapper) {
             wrapper.scrollLeft -= dx;
             wrapper.scrollTop -= dy;
@@ -135,8 +168,28 @@ export class CustomCanvas extends fabric.Canvas {
     container.addEventListener("touchcancel", stopTouch);
   }
 
-  public virtualZoom(newZoom: number) {
-    this.virtualZoomRatio = Math.min(Math.max(0.25, newZoom), 4);
+  private getViewport(): HTMLElement | undefined {
+    return (this.getElement().closest(".canvas-viewport") as HTMLElement | null) ?? undefined;
+  }
+
+  private stopPanning() {
+    if (!this.panning) return;
+    this.panning = false;
+    this.selection = this.panSelection;
+    this.skipTargetFind = this.panSkipTargetFind;
+    const viewport = this.getViewport();
+    if (viewport) viewport.style.cursor = "";
+  }
+
+  public panBy(dx: number, dy: number) {
+    const viewport = this.getViewport();
+    if (!viewport) return;
+    viewport.scrollLeft += dx;
+    viewport.scrollTop += dy;
+  }
+
+  public virtualZoom(newZoom: number, source: "api" | "user" = "api") {
+    this.virtualZoomRatio = Math.min(Math.max(0.05, newZoom), 4);
     // CSS-only magnification stretches the original bitmap and blurs text.
     // Rebuild the backing store at the display scale, keeping document units
     // unchanged so exports, hit-testing and physical print sizes stay stable.
@@ -149,7 +202,7 @@ export class CustomCanvas extends fabric.Canvas {
       { cssOnly: true },
     );
     if (this.onZoomChange) {
-      this.onZoomChange(this.virtualZoomRatio);
+      this.onZoomChange(this.virtualZoomRatio, source);
     }
   }
 
@@ -163,11 +216,11 @@ export class CustomCanvas extends fabric.Canvas {
   }
 
   public virtualZoomIn() {
-    this.virtualZoom(this.virtualZoomRatio * 1.05);
+    this.virtualZoom(this.virtualZoomRatio * 1.05, "user");
   }
 
   public virtualZoomOut() {
-    this.virtualZoom(this.virtualZoomRatio * 0.95);
+    this.virtualZoom(this.virtualZoomRatio * 0.95, "user");
   }
 
   public getVirtualZoom(): number {

@@ -4,18 +4,22 @@ import { ReconnectController } from "../src/desktop/reconnect.ts";
 
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
-test("reconnect retries use capped backoff and manual disconnect stops the loop", async (context) => {
+test("reconnect retries use capped backoff, stops after five attempts and can restart", async (context) => {
   context.mock.timers.enable({ apis: ["setTimeout"] });
   let attempts = 0;
   let delay = -1;
+  let exhausted = false;
+  let lastError: unknown;
   const controller = new ReconnectController(
     async () => {
       attempts++;
       throw new Error("offline");
     },
     () => true,
-    (value) => {
+    (value, _attempting, stopped, error) => {
       delay = value;
+      exhausted = stopped === true;
+      lastError = error;
     },
   );
   controller.start();
@@ -27,18 +31,31 @@ test("reconnect retries use capped backoff and manual disconnect stops the loop"
     [2000, 5000],
     [5000, 10000],
     [10000, 30000],
-    [30000, 60000],
-    [60000, 60000],
   ]) {
     context.mock.timers.tick(advance);
     await flush();
     assert.equal(delay, next);
+    assert.equal(exhausted, false);
   }
-  controller.pause();
+  context.mock.timers.tick(30000);
+  await flush();
+  assert.equal(attempts, 5);
+  assert.equal(exhausted, true);
+  assert.equal((lastError as Error).message, "offline");
   const stoppedAt = attempts;
   context.mock.timers.tick(300000);
   await flush();
   assert.equal(attempts, stoppedAt);
+  controller.start();
+  context.mock.timers.tick(0);
+  await flush();
+  assert.equal(attempts, stoppedAt + 1);
+  assert.equal(exhausted, false);
+  controller.pause();
+  const stoppedAfterPause = attempts;
+  context.mock.timers.tick(300000);
+  await flush();
+  assert.equal(attempts, stoppedAfterPause);
 });
 
 test("reconnect waits for printing/manual connection to finish", async (context) => {

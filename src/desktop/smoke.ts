@@ -152,7 +152,14 @@ export async function runEditorSmoke(context: {
   const deviceButton = Array.from(document.querySelectorAll<HTMLButtonElement>(".studio-printer button")).find(
     (button) => button.textContent?.includes("Devices"),
   )!;
-  deviceButton.click();
+  connectionState.set("connecting");
+  await tick();
+  const autoConnectControlVisible =
+    document.querySelector('[data-testid="auto-connect-status"]')?.textContent?.includes("Connecting") === true &&
+    !!document.querySelector('[data-action="cancel-auto-connect"]') &&
+    !deviceButton.disabled;
+  await nativeRequest("testSnapshot", { name: "auto-connect" });
+  document.querySelector<HTMLButtonElement>('[data-action="cancel-auto-connect"]')!.click();
   await new Promise((resolve) => setTimeout(resolve, 250));
   const deviceChooserOpened = await nativeRequest<boolean>("testDismissDevices");
   await new Promise((resolve) => setTimeout(resolve, 150));
@@ -211,6 +218,7 @@ export async function runEditorSmoke(context: {
       displayWorks &&
       codesWork &&
       deviceCancellationSilent &&
+      autoConnectControlVisible &&
       connectionFailureHelpful &&
       connectionFailureDismisses &&
       stockShapesCorrect &&
@@ -236,6 +244,7 @@ export async function runEditorSmoke(context: {
     ...displayResults,
     ...codeResults,
     deviceCancellationSilent,
+    autoConnectControlVisible,
     connectionFailureHelpful,
     connectionFailureDismisses,
     stockShapesCorrect,

@@ -34,9 +34,13 @@ the current page and its submitted copies complete; it cannot unprint labels
 already submitted. The preview cannot be dismissed while a job is running.
 
 After the first successful link, the app remembers the printer and tries to
-reconnect at startup or after an unexpected cable/radio disconnect. It never
-replays an interrupted print. A deliberate disconnect pauses retries for that
-session. Disable **Reconnect automatically** in Devices to persistently opt out.
+reconnect at startup or after an unexpected cable/radio disconnect. It makes at
+most five attempts, shows an **Auto-connecting… / Retrying in Ns** indicator with
+**Cancel**, then stops and offers **Open Devices / retry** instead of looping.
+Clicking Cancel or Devices stops the pending attempt and opens the chooser, so a
+different printer can be selected. It never replays an interrupted print. A
+deliberate disconnect pauses retries for that session. Disable **Reconnect
+automatically** in Devices to persistently opt out.
 
 ## Automatic stock setup
 

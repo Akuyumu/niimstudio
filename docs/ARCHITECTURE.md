@@ -64,7 +64,13 @@ a native protocol-task selector. The browser-reference flow remains separate.
 but refreshes the backing store through `getRetinaScaling` at display zoom × DPR
 (bounded for memory). Fabric's unzoomed export path disables retina scaling, so
 the print raster and exports stay at label resolution. GUI tests compare actual
-export pixels and pointer hit-testing across zoom levels.
+export pixels and pointer hit-testing across zoom levels. The native editor starts
+in fit mode: available stage width and 54vh height determine a capped fit ratio.
+The label shape is an inner element inside a separate scrollable viewport, so zoomed
+content is not clipped by rounded-shape overflow. Clipping adds a dashed viewing
+edge and caption; Fit restores the full-canvas view. Middle-button drag scrolls the
+viewport without moving selected objects; touch pinch/pan continues to use the same
+scroll viewport.
 
 Launch and quit are deliberately staged. `scripts/niimstudio` selects a system
 interpreter and delegates to `scripts/launch.py`, which chooses the system WebKit or
@@ -136,12 +142,16 @@ up to ten recent device descriptors, not credentials. Reconnect only resolves a
 currently detected USB identity or a known BlueZ device. It never opens a device
 path supplied directly by JavaScript or automatically calls Pair.
 
-Startup and unexpected disconnects schedule retries at 2, 5, 10, 30, then at
-most every 60 seconds. Each I/O attempt has its own deadline. Manual disconnect
-pauses the retry loop until the next deliberate link or app launch. Retries wait
-for an in-flight print to settle and never replay a print job. The Devices dialog
-has an explicit reconnect preference. USB `/dev/serial/by-id` paths are preferred
-when available. A new scan is required if a printer changes its Bluetooth address.
+Startup and unexpected disconnects schedule up to five automatic attempts with
+2/5/10/30-second gaps, then stop with an error rather than retrying forever. A
+visible `Auto-connecting…`/`Retrying in Ns` control offers Cancel and opens Devices;
+Devices stays available except during an active print. Cancellation increments the
+native generation and closes only the pending transport, so late callbacks cannot
+open a second connection. Manual disconnect pauses the loop until the next
+deliberate link or app launch. Retries wait for an in-flight print to settle and
+never replay a print job. The Devices dialog has an explicit reconnect preference.
+USB `/dev/serial/by-id` paths are preferred when available. A new scan is required
+if a printer changes its Bluetooth address.
 
 The chooser can connect directly to BLE devices that do not require a bond, or
 pair first. A temporary `org.bluez.Agent1` with KeyboardDisplay capabilities is

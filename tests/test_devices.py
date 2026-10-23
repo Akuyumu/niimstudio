@@ -142,6 +142,7 @@ class ConnectionAttemptTests(unittest.TestCase):
             connecting=False,
             chooser=None,
             transport=None,
+            connect_request=None,
             generation=0,
             window=Mock(),
             history=Mock(),
@@ -187,3 +188,53 @@ class ConnectionAttemptTests(unittest.TestCase):
         failed(RuntimeError("late failure"))
         self.app.reply.assert_called_once_with(123, cancelled=True)
         self.chooser.connection_failed.assert_not_called()
+
+    def test_cancel_connection_replies_both_requests_and_closes_pending_transport(self):
+        app = SimpleNamespace(
+            smoke=False,
+            connecting=True,
+            chooser=None,
+            transport=Mock(),
+            connect_request=321,
+            generation=4,
+            run_task=Mock(),
+            reply=Mock(),
+        )
+        StudioApplication.cancel_connection(app, 400)
+        self.assertFalse(app.connecting)
+        self.assertIsNone(app.connect_request)
+        self.assertIsNone(app.transport)
+        self.assertEqual(app.generation, 5)
+        app.reply.assert_any_call(321, cancelled=True)
+        app.reply.assert_any_call(400, {"cancelled": True})
+        app.run_task.assert_called_once()
+
+    def test_cancel_connection_does_not_disturb_manual_chooser(self):
+        app = SimpleNamespace(connecting=True, chooser=Mock(), transport=None, connect_request=321, reply=Mock())
+        StudioApplication.cancel_connection(app, 400)
+        app.reply.assert_called_once_with(400, {"cancelled": False})
+        self.assertTrue(app.connecting)
+
+    def test_cancelled_attempt_ignores_late_selected_device(self):
+        app = SimpleNamespace(
+            smoke=False,
+            connecting=False,
+            chooser=None,
+            transport=None,
+            connect_request=None,
+            generation=0,
+            window=Mock(),
+            history=Mock(),
+            reply=Mock(),
+            run_task=Mock(),
+            send=Mock(),
+            ensure_bluez=Mock(),
+        )
+        with patch("niimstudio.app.BluetoothTransport") as transport:
+            StudioApplication.choose_printer(app, 500, automatic=True)
+            _resolve, selected, _unavailable = app.run_task.call_args.args
+            StudioApplication.cancel_connection(app, 501)
+            selected({"id": "/ble", "name": "B1 Pro", "kind": "bluetooth"})
+            transport.assert_not_called()
+        self.assertFalse(app.connecting)
+        self.assertIsNone(app.transport)
